@@ -1,0 +1,11 @@
+{
+  "host": "IP_DEL_BROKER",
+  "port": 1883,
+  "username": "USUARIO_MQTT",
+  "password": "CONTRASENA_MQTT",
+  "topic_prefix": "horno/cjd9000p",
+  "client_id": "cjd-control-panel-local",
+  "discovery_prefix": "homeassistant",
+  "device_id": "cjd9000p_local",
+  "tls": false
+}

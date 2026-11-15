@@ -6,7 +6,10 @@ import sqlite3
 import threading
 import uuid
 from .model import profile, utcnow
-from .analysis import summarize, curve_key
+from .analysis import summarize, curve_key, chart_data
+
+
+SCHEMA_VERSION = 4
 
 
 class Store:
@@ -14,14 +17,15 @@ class Store:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.lock = threading.RLock()
+        self.mqtt_history_enabled = False
         self.db = sqlite3.connect(self.path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         schema = self.db.execute('PRAGMA user_version').fetchone()[0]
-        if schema > 2:
+        if schema > SCHEMA_VERSION:
             self.db.close()
             raise ValueError('La base usa un esquema posterior; utiliza una versión compatible del panel.')
-        if schema == 1:
-            backup = self.path.with_name(self.path.name + '.pre-schema-2.bak')
+        if 0 < schema < SCHEMA_VERSION:
+            backup = self.path.with_name(self.path.name + f'.pre-schema-{SCHEMA_VERSION}.bak')
             if not backup.exists():
                 with closing(sqlite3.connect(backup)) as target:
                     self.db.backup(target)
@@ -47,6 +51,10 @@ class Store:
           timestamp TEXT NOT NULL, kind TEXT NOT NULL, origin TEXT NOT NULL,
           message TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS events_firing ON events(firing_id,id);
+        CREATE TABLE IF NOT EXISTS mqtt_history_runs (run_id TEXT PRIMARY KEY);
+        CREATE TABLE IF NOT EXISTS mqtt_history_outbox (
+          sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+          topic TEXT NOT NULL, payload TEXT NOT NULL);
 
         ''')
         # Migración aditiva del esquema inicial; no elimina perfiles ni lecturas.
@@ -57,13 +65,18 @@ class Store:
             if 'curve_name' not in columns:
                 self.db.execute("ALTER TABLE firings ADD COLUMN curve_name TEXT NOT NULL DEFAULT ''")
                 self.db.execute("UPDATE firings SET curve_name=name")
-            self.db.execute('PRAGMA user_version=2')
-        # El simulador pierde estado al reiniciar; no inventar continuidad de la cocción.
+            if 'mode' not in columns:
+                self.db.execute("ALTER TABLE firings ADD COLUMN mode TEXT NOT NULL DEFAULT 'simulator'")
+            self.db.execute(f'PRAGMA user_version={SCHEMA_VERSION}')
+        # No asumir continuidad tras reiniciar la app; no se envía STOP ni RUN al CJD.
         with self.lock, self.db:
             active = self.db.execute("SELECT id FROM firings WHERE ended_at IS NULL").fetchall()
             for row in active:
                 self.event("interrupted", "system", "Servicio reiniciado: sesión anterior interrumpida; continuidad no confirmada.", row["id"])
-            self.db.execute("UPDATE firings SET ended_at=?, status='interrupted' WHERE ended_at IS NULL", (utcnow(),))
+            stamp = utcnow()
+            self.db.execute("UPDATE firings SET ended_at=?, status='interrupted' WHERE ended_at IS NULL", (stamp,))
+            for row in active:
+                self._queue_firing_end(row['id'], stamp, confirmed=False, reason='servicio_reiniciado')
 
     def profiles(self):
         with self.lock:
@@ -112,24 +125,100 @@ class Store:
                 rows = self.db.execute("SELECT * FROM events ORDER BY id DESC LIMIT 100")
             return [dict(r) for r in rows]
 
-    def start(self, name, memory, segments, origin):
+    def start(self, name, memory, segments, origin, *, mode="simulator"):
+        if mode not in ('simulator','physical'):
+            raise ValueError('Origen de cocción no válido.')
         ident = uuid.uuid4().hex
         with self.lock, self.db:
             self.db.execute("INSERT INTO firings(id,name,started_at,ended_at,status,memory,snapshot,origin,curve_name) VALUES(?,?,?,?,?,?,?,?,?)",
                             (ident, name, utcnow(), None, "running", memory, json.dumps(segments), origin, name))
+            self.db.execute('UPDATE firings SET mode=? WHERE id=?',(mode,ident))
+            if self.mqtt_history_enabled:
+                self._announce_firing(ident)
         return ident
 
     def finish(self, ident):
         with self.lock, self.db:
-            self.db.execute("UPDATE firings SET ended_at=?,status='ended' WHERE id=?", (utcnow(), ident))
+            row = self.db.execute('SELECT ended_at FROM firings WHERE id=?', (ident,)).fetchone()
+            if row is None or row['ended_at'] is not None:
+                return
+            stamp = utcnow()
+            self.db.execute("UPDATE firings SET ended_at=?,status='ended' WHERE id=?", (stamp, ident))
+            self._queue_firing_end(ident, stamp, confirmed=True, reason='parado')
 
     def record(self, firing, state):
         with self.lock, self.db:
+            previous = self.db.execute('SELECT status FROM firings WHERE id=?', (firing,)).fetchone()
             self.db.execute('''INSERT INTO readings(firing_id,timestamp,pv,sv,state,step,minutes,memory)
                                VALUES(?,?,?,?,?,?,?,?)''',
                             (firing, state["timestamp"], state["pv"], state["sv"], state["state"],
                              state["step"], state["minutes"], state["memory"]))
             self.db.execute("UPDATE firings SET status=? WHERE id=?", ("paused" if state["state"] == 2 else "running", firing))
+            if self._mqtt_run(firing) and state['state'] in (1, 2):
+                base = dict(run_id=firing, timestamp=state['timestamp'], memoria=state['memory'])
+                if state['state'] == 2 and previous and previous['status'] != 'paused':
+                    self._queue_mqtt('coccion/event', dict(base, tipo='PAUSA'))
+                elif state['state'] == 1 and previous and previous['status'] == 'paused':
+                    self._queue_mqtt('coccion/event', dict(base, tipo='REANUDACION'))
+                self._queue_mqtt('coccion/state', dict(base, pv=state['pv'], sv=state['sv'],
+                    segmento=state['step'], estado=state['state'],
+                    estado_texto=['PARADO', 'FUNCIONANDO', 'PAUSADO'][state['state']],
+                    tiempo_cjd=state['minutes']))
+
+    def _mqtt_run(self, ident):
+        return self.db.execute('SELECT 1 FROM mqtt_history_runs WHERE run_id=?', (ident,)).fetchone() is not None
+
+    def _queue_mqtt(self, topic, payload):
+        # Invocar dentro de la misma transacción que guarda inicio/lectura/cierre.
+        row = self.db.execute('SELECT mode FROM firings WHERE id=?',(payload['run_id'],)).fetchone()
+        payload = dict(payload, mode=row['mode'] if row else payload.get('mode','simulator'))
+        cursor = self.db.execute('INSERT INTO mqtt_history_outbox(topic,payload) VALUES(?,?)',
+                                 (topic, json.dumps(payload, ensure_ascii=False)))
+        payload['event_id'] = f"local:{payload['run_id']}:{cursor.lastrowid}"
+        self.db.execute('UPDATE mqtt_history_outbox SET payload=? WHERE sequence=?',
+                        (json.dumps(payload, ensure_ascii=False), cursor.lastrowid))
+
+    def _announce_firing(self, ident):
+        if self._mqtt_run(ident):
+            return
+        row = self.db.execute('SELECT * FROM firings WHERE id=?', (ident,)).fetchone()
+        if row is None:
+            return
+        self.db.execute('INSERT INTO mqtt_history_runs(run_id) VALUES(?)', (ident,))
+        segments = json.loads(row['snapshot'])
+        self._queue_mqtt('coccion/event', dict(tipo='INICIO', run_id=ident,
+            timestamp=row['started_at'], inicio=row['started_at'], memoria=row['memory'],
+            nombre_curva=row['curve_name'] or row['name'], perfil_id=None, csv=None,
+            segmentos=[dict(segmento=i+1, temperatura=p['temperature'], tiempo=p['minutes'])
+                       for i,p in enumerate(segments)]))
+
+    def _queue_firing_end(self, ident, stamp, *, confirmed, reason):
+        if not self._mqtt_run(ident):
+            return
+        firing = self.db.execute('SELECT memory FROM firings WHERE id=?', (ident,)).fetchone()
+        last = self.db.execute('SELECT timestamp FROM readings WHERE firing_id=? ORDER BY id DESC LIMIT 1', (ident,)).fetchone()
+        self._queue_mqtt('coccion/event', dict(tipo='FIN', run_id=ident, timestamp=stamp,
+            memoria=firing['memory'], motivo=reason, confirmado=confirmed,
+            descartada=False, clasificacion='coccion', ultima_lectura=last['timestamp'] if last else None))
+
+    def enable_mqtt_history(self):
+        with self.lock, self.db:
+            self.mqtt_history_enabled = True
+            for row in self.db.execute('SELECT id FROM firings WHERE ended_at IS NULL').fetchall():
+                self._announce_firing(row['id'])
+
+    def mqtt_history_batch(self, limit=32):
+        with self.lock:
+            return [dict(r) for r in self.db.execute(
+                'SELECT * FROM mqtt_history_outbox ORDER BY sequence LIMIT ?', (limit,))]
+
+    def mqtt_history_ack(self, sequence):
+        with self.lock, self.db:
+            self.db.execute('DELETE FROM mqtt_history_outbox WHERE sequence=?', (sequence,))
+
+    def mqtt_history_pending(self):
+        with self.lock:
+            return self.db.execute('SELECT count(*) FROM mqtt_history_outbox').fetchone()[0]
 
     def firings(self):
         with self.lock:
@@ -180,12 +269,9 @@ class Store:
             data['curve_key'] = curve_key(data['snapshot'])
             all_rows = [dict(r) for r in self.db.execute('SELECT * FROM readings WHERE firing_id=? ORDER BY id', (ident,))]
             data['statistics'] = summarize(all_rows)
-            # Reducir solo la gráfica; CSV siempre conserva todas las lecturas.
-            total = self.db.execute("SELECT count(*) FROM readings WHERE firing_id=?", (ident,)).fetchone()[0]
-            stride = max(1, (total + 1999) // 2000) if chart else 1
-            data["readings"] = [dict(r) for r in self.db.execute('''SELECT * FROM (
-              SELECT *,row_number() OVER(ORDER BY id) AS n FROM readings WHERE firing_id=?)
-              WHERE (n-1) % ? = 0 OR n=? ORDER BY id''', (ident, stride, total))]
+            # Los huecos y marcas se calculan antes de reducir la gráfica.
+            total = len(all_rows)
+            data['readings'], data['timeline'] = chart_data(all_rows, reduced=chart)
             data["events"] = self.events(ident)
             data["samples"] = total
             return data

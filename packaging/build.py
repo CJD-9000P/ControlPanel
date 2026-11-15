@@ -14,11 +14,12 @@ def build():
     output = ROOT / "dist"
     output.mkdir(exist_ok=True)
     filename = output / f"cjd-control-panel-{__version__}.tar.gz"
-    paths = [ROOT / n for n in ["cjd_panel", "fuentes_referencia", "tests", "docs", "packaging", "ui_reference"]]
-    paths += list(ROOT.glob("*.md")) + [ROOT / "requirements.txt", ROOT / ".gitignore"]
+    paths = [ROOT / n for n in ["cjd_panel", "fuentes_referencia", "tests", "docs", "packaging", "ui_reference", "scripts"]]
+    paths += list(ROOT.glob("*.md")) + [ROOT / "requirements.txt", ROOT / "requirements-mqtt.txt", ROOT / "mqtt.example.json", ROOT / "modbus.example.json", ROOT / "requirements-modbus.txt", ROOT / "requirements-bootstrap.txt", ROOT / "installer-wheels.json", ROOT / "instalar.sh", ROOT / "instalar-fedora.sh", ROOT / "iniciar.sh", ROOT / ".gitignore"]
     files = sorted({f for p in paths for f in (p.rglob("*") if p.is_dir() else [p])
                     if f.is_file() and "__pycache__" not in f.parts and f.suffix != ".pyc"
-                    and f.name != "CJD9000P_Fedora_CJD_V7_3.py"})
+                    and f.name not in {"CJD9000P_Fedora_CJD_V7_3.py", ".mqtt.json", ".modbus.json", ".panel.json", ".web-auth.json", ".env"}
+                    and ".mqtt-deps" not in f.parts and ".serial-deps" not in f.parts})
     manifest = {"version": __version__, "sha256": {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in files}}
     manifest_path = output / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False)+"\n")

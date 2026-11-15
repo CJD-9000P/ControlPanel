@@ -1,3 +1,7 @@
 # Sin paquetes de terceros para esta entrega en modo simulador.
 # Runtime: Python >= 3.11 en Linux, con sqlite3 y soporte PTY.
 # Las versiones efectivamente probadas figuran en DEPENDENCIAS.md.
+
+# MQTT es opcional: requirements-mqtt.txt fija su dependencia y hash.
+
+# Modbus USB es opcional: requirements-modbus.txt fija PyModbus y pyserial.

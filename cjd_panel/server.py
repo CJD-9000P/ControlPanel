@@ -1,4 +1,4 @@
-"""Servidor local WSGI y API JSON. Sin servicios externos ni recursos remotos."""
+"""Servidor local WSGI y API JSON; MQTT opcional, recursos web locales."""
 from concurrent.futures import TimeoutError
 import csv
 from datetime import datetime, timezone
@@ -13,6 +13,7 @@ import uuid
 from wsgiref.simple_server import make_server, WSGIServer
 from socketserver import ThreadingMixIn
 from . import __version__
+from .auth import PasswordVerifier, supplied_password
 from .model import integer, utcnow
 from .modbus import CommunicationError
 
@@ -30,8 +31,10 @@ def csv_bytes(fields, rows):
 
 
 class Application:
-    def __init__(self, worker, store, token=None, host="127.0.0.1"):
+    def __init__(self, worker, store, token=None, host="127.0.0.1", mqtt_bridge=None, password_record=None):
         self.worker, self.store, self.token, self.host = worker, store, token, host
+        self.mqtt_bridge = mqtt_bridge
+        self.password_verifier = PasswordVerifier(password_record) if password_record else None
 
     def __call__(self, env, start_response):
         try:
@@ -73,6 +76,9 @@ class Application:
             return self.error(403, "Host no autorizado.")
         if method not in ("GET", "POST", "PUT", "DELETE"):
             return self.error(405, "Método no permitido.")
+        if path == '/healthz':
+            if method != 'GET':return self.error(405,'Método no permitido.')
+            return self.json({'status':'ok','version':__version__})
         if not path.startswith("/api/"):
             if method != "GET":
                 return self.error(405, "Método no permitido.")
@@ -80,8 +86,12 @@ class Application:
             if filename not in {"index.html", "app.js", "style.css"}:
                 raise KeyError("Recurso no encontrado.")
             return 200, [("Content-Type", mimetypes.guess_type(filename)[0] + "; charset=utf-8")], (STATIC / filename).read_bytes()
-        if self.token and not hmac.compare_digest(env.get("HTTP_AUTHORIZATION", ""), "Bearer " + self.token):
-            return self.error(401, "Introduce la clave de acceso del servicio.")
+        if self.token or self.password_verifier:
+            candidate=supplied_password(env.get('HTTP_AUTHORIZATION',''))
+            authorized=(self.password_verifier.verify(candidate) if self.password_verifier else
+                candidate is not None and hmac.compare_digest(candidate.encode('utf-8'),self.token.encode('utf-8')))
+            if not authorized:
+                return self.error(401, "Introduce la clave de acceso del servicio.")
         data = None
         if method != "GET":
             if env.get("HTTP_X_CJD_REQUEST") != "1":
@@ -102,7 +112,8 @@ class Application:
                     data = raw.decode("utf-8-sig")
         parts = path.strip("/").split("/")
         if path == "/api/state" and method == "GET":
-            return self.json({**self.worker.snapshot(), "version": __version__})
+            return self.json({**self.worker.snapshot(), "version": __version__,
+                "mqtt": self.mqtt_bridge.snapshot() if self.mqtt_bridge else {"enabled": False, "connected": False}})
         if path == "/api/events" and method == "GET":
             return self.json(self.store.events())
         if path == "/api/profiles":

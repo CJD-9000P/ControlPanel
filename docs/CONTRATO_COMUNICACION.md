@@ -44,3 +44,23 @@ El comunicador histórico usaba PyModbus, reintentos y otros mecanismos ligados 
 ## Separación de órdenes en la interfaz actualizada
 
 La API exige `memory` explícita para RUN y rechaza `profile_id` en esa orden. Primero se carga el perfil mediante la acción `load`, que no escribe C4H ni inicia una sesión; después RUN utiliza el programa confirmado de la memoria. El editor muestra C01 como PV y el backend sigue releyendo PV para la adaptación real, sin confiar en la vista previa del navegador.
+
+## Revisión de disponibilidad y arranque
+
+La disponibilidad requiere una sincronización completa reciente y worker vivo. El margen de antigüedad usa el intervalo y timeout del adaptador y se expone como `freshness_limit_seconds`; no es una garantía sobre un puerto físico. La edad se calcula con reloj monotónico, independiente de ajustes del reloj UTC. El bloque dinámico, SPC y dP se releen tras sincronizar memorias; un cambio de SPC o valor incompatible impide publicar una mezcla de estados.
+
+Los fallos iniciales también generan evento offline, sin repetirse en cada sondeo. Los errores de E/S se convierten en fallos de comunicación y las lecturas se recuperan en sondeos posteriores; nunca se reenvía una escritura por este motivo. Un arranque con simulador ya funcionando/pausado registra estado y sesión observados mediante lecturas, sin RUN ni adaptación de C01. La hora inicial corresponde a primera observación, no a una hora histórica desconocida.
+
+Casos probados y pendientes del USB físico: `DIAGNOSTICO_MODBUS.md`. La entrega actual no enumera ni abre dispositivos USB.
+
+## Entrada MQTT opcional
+
+El puente reutiliza los temas y el sobre histórico con `command_id`, `command`, `issued_at` con zona y `ttl_seconds` 1–120. RUN exige memoria explícita. Retenidos, duplicados y órdenes caducadas no se ejecutan. No existe un segundo maestro: MQTT solo encola operaciones en el worker. Una escritura ya iniciada se verifica sin reenvío; `accepted` no equivale a éxito. La carga MQTT usa la misma adaptación C01/PV y los 40 registros verificados, sin iniciar ni añadir automáticamente un perfil a SQLite.
+
+Las acciones que se conocen como originadas por HA se registran como `mqtt`; los cambios externos siguen siendo observados. Configuración y contrato MQTT completo en `MQTT.md`. El transporte continúa siendo únicamente el PTY del simulador.
+
+## Adaptador físico seleccionable
+
+El usuario ha solicitado el paso seleccionable a USB desde la cabecera. `PhysicalRTU` usa `/dev/ttyUSB1` por defecto y los parámetros 9600 8N2/dirección 1 del código recuperado. Copia la detección del argumento de dispositivo y la secuencia de lectura de respaldo (C9/CA, CC, CD/CE). El worker conserva FC03/FC16, dP=0, C01/PV, comparación de memorias y confirmación CAH. PyModbus 3.11.4/pyserial 3.5 son dependencias nuevas elegidas y probadas con PTY; no se atribuyen a la instalación física antigua desconocida.
+
+No hay reintentos de escritura de biblioteca. La selección no envía RUN/STOP ni cargas; se conecta por lectura. Los tests usan únicamente PTY propios, incluido ACK perdido y exclusión de un segundo cliente. Documentación y pendientes de aceptación física en `MODBUS_USB.md`. Esta sección sustituye las limitaciones históricas que indicaban ausencia de puerto configurable.

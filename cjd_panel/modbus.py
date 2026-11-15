@@ -1,4 +1,4 @@
-"""Transporte RTU exclusivo del simulador incluido. Nunca abre puertos físicos."""
+"""Transporte RTU del simulador incluido; el adaptador físico está separado."""
 import importlib.util
 import os
 from pathlib import Path
@@ -23,6 +23,7 @@ class CommunicationError(RuntimeError):
 
 class SimulatedRTU:
     """Servidor PTY y cliente FC03/FC16; un único worker es dueño del cliente."""
+    mode = 'simulator'
     def __init__(self, segment_seconds=10, timeout=0.8):
         self.furnace = simulator.Furnace(segment_seconds=segment_seconds)
         self.server = simulator.RTUServer(self.furnace)
@@ -106,6 +107,8 @@ class SimulatedRTU:
             raise CommunicationError("ACK de escritura incorrecto.")
 
     def close(self):
+        if self.stop_event.is_set():
+            return
         self.stop_event.set()
         self.thread.join(2)
         os.close(self.fd)

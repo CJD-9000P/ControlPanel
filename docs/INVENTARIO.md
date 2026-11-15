@@ -11,7 +11,7 @@ Se recibió `CJD_Control_Panel_documentacion_actualizada.zip` y un comunicador P
 - Los hashes de los cuatro archivos de referencia constan en `FUENTES_SHA256.json` y se comprobaron contra el ZIP original después del desarrollo.
 - No se incluyeron muestras CSV del registrador histórico ni una base PostgreSQL; no se han supuesto sus formatos.
 
-## Resultado implementado
+## Resultado histórico de la entrega inicial
 
 La versión del producto nuevo se define solo en `cjd_panel/__init__.py`; el arranque, la API y el nombre del paquete la derivan de ahí. La numeración de referencias y el número de esquema SQLite son componentes distintos, no versiones del panel.
 
@@ -19,7 +19,7 @@ El panel ejecuta el simulador incluido sobre PTY y solo ese transporte. No abre 
 
 Las autopruebas originales de ambos archivos pasaron. La batería nueva usa SQLite temporal, PTY y aplicación WSGI directa, sin puertos del horno ni sockets de red.
 
-## Límites pendientes
+## Límites de la entrega inicial (actualizaciones al final)
 
 - El sandbox impide crear sockets IP: el intento de arrancar el servidor falló con `Operation not permitted`. No hay prueba de escucha HTTP, LAN, proxy ni túnel en este entorno.
 - No hay navegador instalado; no se ha realizado revisión visual ni prueba táctil. Se comprobó sintaxis JavaScript con V8, no renderizado.
@@ -35,3 +35,9 @@ El comunicador histórico original (tanto la copia raíz como la de `fuentes_ref
 `actualiza.zip` añade especificación visual, manual de usuario, siete capturas y tres tarjetas históricas. Se integran las instrucciones nuevas de AGENTS sin sobreescribir el estado técnico actual con versiones anteriores de PLAN/ARQUITECTURA/DEPENDENCIAS. La especificación se conserva en raíz. Referencias visuales y JS originales verificadas byte a byte contra el ZIP; hashes en `REFERENCIAS_UI_SHA256.json`.
 
 Las capturas muestran la aplicación histórica, no son capturas del panel nuevo. Los originales del comunicador y ambos ZIP permanecen locales; la distribución del producto contiene solo las referencias sin configuración privada. Las comprobaciones de sintaxis/lógica JavaScript no sustituyen una prueba real de navegador.
+
+## Actualizaciones posteriores verificadas
+
+El transporte sigue siendo exclusivamente el PTY del simulador. La integración MQTT opcional y su prueba con el broker del usuario se documentan en `MQTT.md`; no se han abierto puertos físicos. Se comprobó también HTTP loopback al activar la entrega MQTT fuera del sandbox. Esto sustituye las limitaciones de red de la entrega inicial en ese entorno autorizado, sin afirmar aceptación visual/táctil ni prueba de LAN remota.
+
+Se añadió el flujo histórico `coccion/event` y `coccion/state`, contrastado con los métodos `_evento_coccion`, `crear_csv`, `escribir_csv` y `cerrar_csv_coccion` del comunicador recuperado. No se dispone del consumidor de HA ni se modifica PostgreSQL: la recepción MQTT y la aceptación de su historial son verificaciones distintas.

@@ -13,7 +13,7 @@ from cjd_panel import __version__
 from cjd_panel.model import profile
 from cjd_panel.modbus import CommunicationError, SimulatedRTU
 from cjd_panel.server import Application, CSV_FIELDS, csv_bytes
-from cjd_panel.store import Store
+from cjd_panel.store import Store, SCHEMA_VERSION
 from cjd_panel.worker import Worker
 
 
@@ -299,8 +299,8 @@ class AnalysisTest(unittest.TestCase):
                 self.assertEqual(f['notes'],'')
                 self.assertEqual(f['curve_name'],'Histórica')
                 self.assertEqual(len(f['snapshot']),20)
-                self.assertEqual(store.db.execute('PRAGMA user_version').fetchone()[0],2)
-                backup=path.with_name(path.name+'.pre-schema-2.bak')
+                self.assertEqual(store.db.execute('PRAGMA user_version').fetchone()[0],SCHEMA_VERSION)
+                backup=path.with_name(path.name+f'.pre-schema-{SCHEMA_VERSION}.bak')
                 self.assertTrue(backup.exists())
                 with closing(sqlite3.connect(backup)) as old:
                     self.assertEqual(old.execute('PRAGMA user_version').fetchone()[0],1)

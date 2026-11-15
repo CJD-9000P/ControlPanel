@@ -16,3 +16,15 @@ dist/
 # Paquete original de actualización: contiene configuración local
 /actualiza.zip
 *.pre-schema-*.bak
+
+# Credenciales y dependencia MQTT opcional del entorno
+.mqtt.json
+.mqtt-deps/
+
+# Configuración y dependencias opcionales del puerto físico
+.modbus.json
+.serial-deps/
+
+# Configuración y autenticación del instalador
+.panel.json
+.web-auth.json

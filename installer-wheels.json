@@ -1,0 +1,22 @@
+{
+  "paho-mqtt": {
+    "filename": "paho_mqtt-2.1.0-py3-none-any.whl",
+    "url": "https://files.pythonhosted.org/packages/c4/cb/00451c3cf31790287768bb12c6bec834f5d292eaf3022afc88e14b8afc94/paho_mqtt-2.1.0-py3-none-any.whl",
+    "sha256": "6db9ba9b34ed5bc6b6e3812718c7e06e2fd7444540df2455d2c51bd58808feee"
+  },
+  "pymodbus": {
+    "filename": "pymodbus-3.11.4-py3-none-any.whl",
+    "url": "https://files.pythonhosted.org/packages/02/80/84c32440949c77f2c201c38e5fa56fd8f19da31bf24df55bdbdaba67767c/pymodbus-3.11.4-py3-none-any.whl",
+    "sha256": "89865929f53bd5e32b4076dde00ee86d9b8afb1686832ed74e69d55df22729c3"
+  },
+  "pyserial": {
+    "filename": "pyserial-3.5-py2.py3-none-any.whl",
+    "url": "https://files.pythonhosted.org/packages/07/bc/587a445451b253b285629263eb51c2d8e9bcea4fc97826266d186f96f558/pyserial-3.5-py2.py3-none-any.whl",
+    "sha256": "c4451db6ba391ca6ca299fb3ec7bae67a5c55dde170964c7a14ceefec02f2cf0"
+  },
+  "pip": {
+    "filename": "pip-26.3-py3-none-any.whl",
+    "url": "https://files.pythonhosted.org/packages/07/25/ee8c38ae72d66b844ce8eb9711ba905dba21ca1a8a0c960057c41cd23337/pip-26.3-py3-none-any.whl",
+    "sha256": "f3b60b20ffaadd4415ed7957212a38ac63fa4c5fa375bd0f4a797777940fad13"
+  }
+}
