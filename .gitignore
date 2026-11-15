@@ -12,3 +12,7 @@ dist/
 /CJD9000P_Fedora_CJD_V7_3.py
 /fuentes_referencia/CJD9000P_Fedora_CJD_V7_3.py
 /CJD_Control_Panel_documentacion_actualizada.zip
+
+# Paquete original de actualización: contiene configuración local
+/actualiza.zip
+*.pre-schema-*.bak

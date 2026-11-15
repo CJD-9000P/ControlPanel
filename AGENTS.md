@@ -27,6 +27,13 @@ La aplicación funciona sin Home Assistant, sin Internet y sin MQTT. MQTT podrá
 - El puerto RS485 debe tener un solo maestro activo. Mantener un único worker de comunicación como en el programa existente; no permitir que el ASUS y el nuevo dispositivo sondeen el mismo bus simultáneamente.
 - El simulador permite verificar el protocolo y los estados simulados, pero no demuestra la respuesta térmica real ni sustituye las pruebas ya realizadas con el CJD.
 
+## Referencia visual y funcional de la interfaz
+
+- Antes de implementar o rediseñar pantallas, leer `ESPECIFICACION_UI_PARA_CODEX.md`, revisar el manual PDF y las capturas renderizadas, y estudiar los tres archivos JS de tarjetas en `fuentes_referencia/tarjetas_homeassistant/`. El manual documenta la interfaz existente y sirve como referencia visual/funcional.
+- Mantener la organización reconocible de las tarjetas, la navegación y los flujos del manual (Mis curvas, Editar curva, Cargar curva, Control del horno y Mis cocciones). No omitir controles de cocción: Iniciar, Pausar, Reanudar y Parar deben estar visibles y su estado debe depender del estado real observado del programador. C01/C1 es la temperatura inicial real tomada de PV; mostrar también PV viva como temperatura actual.
+- La aplicación nueva es independiente de HA. Sustituir indicadores/avisos específicos de MQTT, Home Assistant y Telegram por estado de la conexión local con el CJD y funciones locales equivalentes. No convertirlos en requisitos.
+- Si el usuario ya tiene una versión nueva de la aplicación, pedir su código/capturas para comparar antes de rediseñar; el manual refleja la interfaz de octubre de 2026, no necesariamente el prototipo actual.
+
 ## Arquitectura
 
 Separar estas responsabilidades:

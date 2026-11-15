@@ -10,17 +10,17 @@ Desde la carpeta del proyecto, con Python 3.11 o posterior en Linux:
 python3 -m cjd_panel
 ```
 
-Abre **http://127.0.0.1:8080** en el navegador del mismo equipo. Para terminar, pulsa `Ctrl+C` en el terminal. Los datos quedan en `data/cjd.sqlite3`; no se borran al cerrar. Para ver la versión real: `python3 -m cjd_panel --version`.
+Abre **http://127.0.0.1:8080** en el navegador del mismo equipo. Para terminar, pulsa `Ctrl+C` en el terminal. Los datos quedan en `data/cjd.sqlite3`; no se borran al cerrar. La migración al esquema de historial con observaciones es automática y conserva una copia previa `cjd.sqlite3.pre-schema-2.bak` al actualizar una base del esquema inicial. Para ver la versión real: `python3 -m cjd_panel --version`.
 
 Si ejecutas la aplicación en el LXC y el navegador está en otro equipo, `127.0.0.1` representa ese otro equipo. Usa un túnel SSH al LXC o habilita explícitamente el acceso LAN descrito más abajo.
 
 ## Primer recorrido
 
 1. En **Curvas**, copia una de las cuatro memorias del simulador a la biblioteca, o crea una curva nueva. Los ejemplos del simulador son ficticios y no constituyen recetas de cocción.
-2. Edita nombre, notas y los 20 puntos. `Cᵢ` es la temperatura inicial y `tᵢ` los minutos de transición a `Cᵢ₊₁`; para una meseta, repite temperatura en el siguiente punto. `t20` es cero. Guarda la curva.
+2. Edita nombre, descripción, las duraciones y las temperaturas finales de los 19 recorridos entre 20 puntos. C01 se muestra como PV, sin un campo editable de temperatura fija. `Cᵢ` es la temperatura inicial y `tᵢ` los minutos de transición a `Cᵢ₊₁`; para una meseta, repite temperatura en el siguiente punto. `t20` es cero. Guarda la curva.
 3. Puedes cargarla en una memoria 1–4 con el simulador parado. La aplicación verifica los 40 registros y adapta C01 a la PV actual. El perfil de biblioteca queda intacto.
-4. En **Control**, selecciona memoria y, opcionalmente, un perfil guardado. Inicia, pausa, reanuda o detén la cocción. Cada orden se confirma leyendo el estado del simulador.
-5. En **Cocciones**, consulta gráfica PV/SV, lecturas y eventos. Selecciona dos terminadas para comparar PV desde su inicio. Exporta CSV o importa un CSV compatible.
+4. En **Control del horno**, elige explícitamente una memoria ya cargada. Inicia, pausa, reanuda o detén la cocción. Cada orden se confirma leyendo el estado del simulador.
+5. En **Cocciones**, consulta gráfica PV/SV, lecturas y eventos. Selecciona entre dos y siete terminadas para comparar PV/SV, duración, máxima temperatura, desviación y continuidad desde su inicio. Busca por nombre/ID, filtra por estado y fechas o agrupa por curva. Puedes cambiar el nombre, guardar observaciones y eliminar sesiones terminadas con confirmación. Exporta CSV o importa un CSV compatible.
 6. En **Herramientas del simulador**, prueba acciones externas, desconexión/reconexión o pérdida del próximo ACK. Los cambios externos se registran como observados, sin atribuirlos a un botón concreto.
 
 Los tramos del simulador duran 10 segundos reales por defecto. Cambia esa duración con `--segment-seconds 30`. Los minutos mostrados por el programador son minutos **virtuales del tramo**, no la duración real de la sesión.
@@ -84,3 +84,17 @@ La integración física RS485 se realizará en una fase separada, cuando se conf
 ## Repositorio público
 
 Se publican la aplicación, las pruebas, el simulador y los manuales. El comunicador histórico original y el ZIP entregado se conservan solo en el entorno local porque contienen configuración de la instalación; están excluidos de Git y de los paquetes generados. Los hashes originales se mantienen como inventario de las fuentes recibidas, aunque alguna no se distribuya públicamente.
+
+## Interfaz de referencia y actualización
+
+La interfaz oscura de tarjetas y acentos verdes sigue el manual y las capturas aportados en `actualiza.zip`. **Mis curvas** separa biblioteca, edición y carga; **Control del horno** mantiene Iniciar, Pausar, Reanudar y Parar visibles, con datos reales confirmados, curva programada, avance visual y tabla de tramos; **Mis cocciones** incluye filtros, comparación, estadísticas y observaciones.
+
+`docs/REVISION_UI.md` registra las diferencias, las equivalencias con las tarjetas históricas y los límites de verificación. Los JS de Home Assistant se distribuyen solo como referencias: no se cargan ni se ejecutan en la aplicación local.
+
+Para usar el código actualizado, detén el proceso anterior con `Ctrl+C` y vuelve a arrancarlo con el mismo directorio de datos. Si usas LAN sin contraseña:
+
+```bash
+python3 -m cjd_panel --host 0.0.0.0 --port 8080 --no-auth
+```
+
+Después recarga la página del navegador. El nuevo backend debe reiniciarse para migrar la base y servir la API de observaciones; recargar solo la página no sustituye ese reinicio. El simulador vuelve a su estado inicial y las sesiones abiertas anteriores se marcan interrumpidas; la biblioteca y el historial se conservan.

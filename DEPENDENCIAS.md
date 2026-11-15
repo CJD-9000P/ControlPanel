@@ -42,3 +42,11 @@ El entorno restringe sockets IP incluso en loopback. Se han podido probar PTY, S
 El comunicador suministrado es el último recuperable, no está confirmado como última versión físicamente probada. Su autoprueba pasa con cliente falso y no necesita instalar PyModbus/paho. El simulador y el comunicador tienen numeración propia; no deben confundirse con la versión del panel.
 
 Inventario y hashes en `docs/INVENTARIO.md` y `docs/FUENTES_SHA256.json`. Cualquier dependencia externa nueva deberá registrar versión exacta, función, plataforma, manifiesto/bloqueo y validación efectuada antes de incorporarse.
+
+## Referencias añadidas para la actualización de interfaz
+
+El manual de usuario y sus siete capturas se conservan en `ui_reference/`; las tres tarjetas históricas en `fuentes_referencia/tarjetas_homeassistant/`. Son documentación de desarrollo y material del paquete, no dependencias ejecutables del panel. Sus hashes constan en `docs/REFERENCIAS_UI_SHA256.json`.
+
+Las etiquetas históricas son Curvas V7.6.0 (archivo original denominado V7.6.1), Control V7.5.9.2 y Cocciones V0.6.7. No son versiones de la aplicación nueva. No se incorporan Lovelace, entidades HA, MQTT, Telegram ni PostgreSQL. El módulo de análisis usa solo `datetime`, `hashlib` y `json` del runtime Python probado; no hay paquetes nuevos que instalar o bloquear.
+
+La sintaxis y escenarios de lógica de interfaz se verifican con V8 proporcionado por las herramientas del entorno; su versión exacta está pendiente de comprobar y no es una dependencia del producto. La revisión visual sigue pendiente.

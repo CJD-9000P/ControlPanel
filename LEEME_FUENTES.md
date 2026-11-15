@@ -22,3 +22,7 @@ El simulador V7.5.1 y el comunicador V7.3.0 son versiones diferentes. Confirmar 
 ## Implementación nueva
 
 El código del panel está en `cjd_panel/`; el uso se describe en `README.md`. Las fuentes de referencia permanecen intactas y sus hashes están en `docs/FUENTES_SHA256.json`. `PLAN.md`, `ARQUITECTURA.md` y `DEPENDENCIAS.md` reflejan ahora la entrega con simulador; la revisión de hardware conserva el contexto histórico y enlaza ese estado.
+
+## Nuevas referencias visuales
+
+`actualiza.zip` aporta `ESPECIFICACION_UI_PARA_CODEX.md`, el manual y capturas en `ui_reference/` y las tres tarjetas JS en `fuentes_referencia/tarjetas_homeassistant/`. Se conservan byte a byte como referencias históricas; no se ejecutan como parte de la app local. El ZIP original sigue excluido de Git por incluir también configuración de la instalación. La comparación con el prototipo y la adaptación local constan en `docs/REVISION_UI.md`.

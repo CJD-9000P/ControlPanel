@@ -24,7 +24,7 @@ El CJD conserva regulación térmica, pantalla y botones originales. La aplicaci
 4. Carga de curvas, selección de memoria y RUN/PAUSE/RESUME/STOP con relectura; adaptación de C01 a PV sin editar la biblioteca; no se repiten escrituras sin confirmar.
 5. Biblioteca SQLite: crear, editar, duplicar, borrar, buscar, graficar, importar/exportar CSV y copiar memorias del simulador.
 6. Control: PV, SV, estado, punto, tiempo virtual del tramo, memoria y gráfica en vivo; eventos externos observados y herramientas de ensayo de fallos.
-7. Historial de cocciones y lecturas UTC; snapshots inmutables; detalle, gráfica, comparación de dos terminadas y CSV. Importación del formato propio, sin inferir formatos antiguos.
+7. Historial de cocciones y lecturas UTC; snapshots inmutables; detalle, gráfica, comparación de dos a siete terminadas y CSV. Importación del formato propio, sin inferir formatos antiguos.
 8. Copia consistente descargable, restauración documentada y marcado de sesiones interrumpidas tras reinicio.
 9. Pruebas automatizadas del contrato, persistencia y API WSGI; validación de sintaxis JavaScript con V8.
 10. Comando de arranque local, plantilla systemd y generador de paquete sin datos privados.
@@ -49,3 +49,11 @@ El sandbox permite PTY, SQLite y llamadas directas a la aplicación WSGI, pero i
 No seleccionar ni comprar todavía. Candidatos históricos: Raspberry Pi, CM5 con portadora o panel PC industrial Linux. CPU ARM64/x86-64, pantalla y dimensiones pendientes; RAM/almacenamiento del diseño anterior son provisionales. La caja será nueva y adjunta a la principal. La entrada prevista 220–240 V AC requiere fuente AC/DC y diseño eléctrico apropiado. Medición térmica, caja y validación física corresponden a esa fase.
 
 Las arquitecturas anteriores de HA, el manual histórico V3.4.2 y el Plan V4 son referencias históricas, no requisitos de esta aplicación. Las versiones de fuentes se documentan como históricas y no se usan para numerar el producto nuevo.
+
+## Actualización de interfaz a partir de actualiza.zip
+
+Se incorpora `ESPECIFICACION_UI_PARA_CODEX.md` y las referencias de `ui_reference/` y `fuentes_referencia/tarjetas_homeassistant/`. Su alcance visual/funcional complementa este plan; los documentos antiguos del ZIP no reemplazan las decisiones técnicas ya implementadas.
+
+Completado: tarjetas oscuras con acentos verdes; navegación Mis curvas / Control del horno / Mis cocciones; fichas con gráficas y acciones; editor de 19 recorridos con C01/PV no editable; carga con memoria y resumen propios; inicio separado con elección explícita de memoria; programa y avance visual con tabla; búsqueda, filtros, agrupación por snapshot ignorando C01 y comparación de hasta siete sesiones terminadas; nombre, observaciones y borrado protegido; estadísticas sobre todas las lecturas. Migración aditiva SQLite con backup previo al cambiar desde esquema 1.
+
+`docs/REVISION_UI.md` contiene la matriz tarjeta → función local → API/SQLite y los cambios motivados por uso táctil e independencia de HA. Pendiente: verificación visual de cada pantalla en navegador y pantalla táctil, imposible dentro del sandbox sin navegador ni sockets. No se presenta esa aceptación visual como superada.

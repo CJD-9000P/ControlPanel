@@ -150,6 +150,12 @@ class Application:
             return self.json(self.store.firings())
         if path == "/api/firings/import" and method == "POST":
             return self.json(self.import_firing(data), 201)
+        if len(parts) == 3 and parts[1] == 'firings':
+            if method == 'PUT':
+                return self.json(self.store.update_firing(parts[2], data))
+            if method == 'DELETE':
+                self.store.delete_firing(parts[2])
+                return self.json({'message': 'Cocción eliminada con sus lecturas y eventos.'})
         if len(parts) in (3,4) and parts[1] == "firings" and method == "GET":
             ident = parts[2]
             exporting = len(parts) == 4 and parts[3] == "csv"
@@ -190,7 +196,7 @@ class Application:
             raise ValueError("CSV vacío.")
         ident = uuid.uuid4().hex
         with self.store.lock, self.store.db:
-            self.store.db.execute("INSERT INTO firings VALUES(?,?,?,?,?,?,?,?)",
+            self.store.db.execute("INSERT INTO firings(id,name,started_at,ended_at,status,memory,snapshot,origin) VALUES(?,?,?,?,?,?,?,?)",
                 (ident, "Cocción importada", rows[0][0], rows[-1][0], "imported", rows[0][-1], "[]", "import"))
             self.store.db.executemany("INSERT INTO readings(firing_id,timestamp,pv,sv,state,step,minutes,memory) VALUES(?,?,?,?,?,?,?,?)",
                                      [(ident,*r) for r in rows])

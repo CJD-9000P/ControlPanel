@@ -1,10 +1,12 @@
 """Persistencia transaccional SQLite; timestamps UTC y snapshots inmutables."""
 import json
+from contextlib import closing
 from pathlib import Path
 import sqlite3
 import threading
 import uuid
 from .model import profile, utcnow
+from .analysis import summarize, curve_key
 
 
 class Store:
@@ -14,6 +16,15 @@ class Store:
         self.lock = threading.RLock()
         self.db = sqlite3.connect(self.path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
+        schema = self.db.execute('PRAGMA user_version').fetchone()[0]
+        if schema > 2:
+            self.db.close()
+            raise ValueError('La base usa un esquema posterior; utiliza una versión compatible del panel.')
+        if schema == 1:
+            backup = self.path.with_name(self.path.name + '.pre-schema-2.bak')
+            if not backup.exists():
+                with closing(sqlite3.connect(backup)) as target:
+                    self.db.backup(target)
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=FULL")
         self.db.execute("PRAGMA foreign_keys=ON")
@@ -36,8 +47,17 @@ class Store:
           timestamp TEXT NOT NULL, kind TEXT NOT NULL, origin TEXT NOT NULL,
           message TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS events_firing ON events(firing_id,id);
-        PRAGMA user_version=1;
+
         ''')
+        # Migración aditiva del esquema inicial; no elimina perfiles ni lecturas.
+        with self.lock, self.db:
+            columns = {r['name'] for r in self.db.execute('PRAGMA table_info(firings)')}
+            if 'notes' not in columns:
+                self.db.execute("ALTER TABLE firings ADD COLUMN notes TEXT NOT NULL DEFAULT ''")
+            if 'curve_name' not in columns:
+                self.db.execute("ALTER TABLE firings ADD COLUMN curve_name TEXT NOT NULL DEFAULT ''")
+                self.db.execute("UPDATE firings SET curve_name=name")
+            self.db.execute('PRAGMA user_version=2')
         # El simulador pierde estado al reiniciar; no inventar continuidad de la cocción.
         with self.lock, self.db:
             active = self.db.execute("SELECT id FROM firings WHERE ended_at IS NULL").fetchall()
@@ -87,7 +107,7 @@ class Store:
     def events(self, firing=None):
         with self.lock:
             if firing:
-                rows = self.db.execute("SELECT * FROM events WHERE firing_id=? ORDER BY id DESC LIMIT 300", (firing,))
+                rows = self.db.execute("SELECT * FROM events WHERE firing_id=? ORDER BY id DESC", (firing,))
             else:
                 rows = self.db.execute("SELECT * FROM events ORDER BY id DESC LIMIT 100")
             return [dict(r) for r in rows]
@@ -95,8 +115,8 @@ class Store:
     def start(self, name, memory, segments, origin):
         ident = uuid.uuid4().hex
         with self.lock, self.db:
-            self.db.execute("INSERT INTO firings VALUES(?,?,?,?,?,?,?,?)",
-                            (ident, name, utcnow(), None, "running", memory, json.dumps(segments), origin))
+            self.db.execute("INSERT INTO firings(id,name,started_at,ended_at,status,memory,snapshot,origin,curve_name) VALUES(?,?,?,?,?,?,?,?,?)",
+                            (ident, name, utcnow(), None, "running", memory, json.dumps(segments), origin, name))
         return ident
 
     def finish(self, ident):
@@ -113,8 +133,42 @@ class Store:
 
     def firings(self):
         with self.lock:
-            return [dict(r) for r in self.db.execute('''SELECT f.*, (SELECT count(*) FROM readings r
-              WHERE r.firing_id=f.id) AS samples FROM firings f ORDER BY started_at DESC''')]
+            rows = self.db.execute('''SELECT f.*, coalesce(r.samples,0) AS samples,
+              r.pv_max,r.first_reading,r.last_reading FROM firings f LEFT JOIN
+              (SELECT firing_id,count(*) AS samples,max(pv) AS pv_max,
+              min(timestamp) AS first_reading,max(timestamp) AS last_reading
+              FROM readings GROUP BY firing_id) r ON r.firing_id=f.id ORDER BY f.started_at DESC''').fetchall()
+            data = []
+            for row in rows:
+                item = dict(row)
+                item['curve_key'] = curve_key(json.loads(item.pop('snapshot')))
+                data.append(item)
+            return data
+
+    def update_firing(self, ident, data):
+        if not isinstance(data, dict):
+            raise ValueError('Se esperaba nombre y observaciones.')
+        name, notes = data.get('name'), data.get('notes')
+        if not isinstance(name, str) or not name.strip() or len(name) > 120:
+            raise ValueError('El nombre es obligatorio y admite hasta 120 caracteres.')
+        if not isinstance(notes, str) or len(notes) > 4000:
+            raise ValueError('Las observaciones admiten hasta 4000 caracteres.')
+        with self.lock, self.db:
+            if not self.db.execute('SELECT id FROM firings WHERE id=?', (ident,)).fetchone():
+                raise KeyError('Cocción no encontrada.')
+            self.db.execute('UPDATE firings SET name=?,notes=? WHERE id=?', (name.strip(), notes, ident))
+        return {'id': ident, 'name': name.strip(), 'notes': notes}
+
+    def delete_firing(self, ident):
+        with self.lock, self.db:
+            row = self.db.execute('SELECT ended_at FROM firings WHERE id=?', (ident,)).fetchone()
+            if row is None:
+                raise KeyError('Cocción no encontrada.')
+            if row['ended_at'] is None:
+                raise ValueError('No se puede eliminar una cocción en curso.')
+            self.db.execute('DELETE FROM readings WHERE firing_id=?', (ident,))
+            self.db.execute('DELETE FROM events WHERE firing_id=?', (ident,))
+            self.db.execute('DELETE FROM firings WHERE id=?', (ident,))
 
     def firing(self, ident, chart=False):
         with self.lock:
@@ -123,6 +177,9 @@ class Store:
                 raise KeyError("Cocción no encontrada.")
             data = dict(row)
             data["snapshot"] = json.loads(data["snapshot"])
+            data['curve_key'] = curve_key(data['snapshot'])
+            all_rows = [dict(r) for r in self.db.execute('SELECT * FROM readings WHERE firing_id=? ORDER BY id', (ident,))]
+            data['statistics'] = summarize(all_rows)
             # Reducir solo la gráfica; CSV siempre conserva todas las lecturas.
             total = self.db.execute("SELECT count(*) FROM readings WHERE firing_id=?", (ident,)).fetchone()[0]
             stride = max(1, (total + 1999) // 2000) if chart else 1
@@ -135,7 +192,7 @@ class Store:
 
     def backup(self, destination):
         with self.lock:
-            with sqlite3.connect(destination) as target:
+            with closing(sqlite3.connect(destination)) as target:
                 self.db.backup(target)
 
     def close(self):

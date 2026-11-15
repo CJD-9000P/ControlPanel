@@ -177,6 +177,10 @@ class Worker:
             raise ValueError("Operación desconocida.")
         if operation == "read":
             return self._poll()
+        if operation == 'run' and 'memory' not in data:
+            raise ValueError('Elige explícitamente la memoria que se va a iniciar.')
+        if operation == 'run' and data.get('profile_id'):
+            raise ValueError('Carga el perfil en una memoria antes de iniciar; Cargar e Iniciar son acciones distintas.')
         self._poll()  # Conciliar cambios externos ANTES de atribuir una orden a la app.
         memory = integer(data.get("memory", self.adapter.read(0xA0)[0]), "Memoria", 1, 4)
         name = None
@@ -189,11 +193,12 @@ class Worker:
             self._write_verified(0xA0, [memory])
         elif operation == "run":
             self._write_verified(0xA0, [memory])
-            if data.get("profile_id"):
-                selected = self.store.get_profile(data["profile_id"])
-                segments, name = selected["segments"], selected["name"]
-            else:
-                segments = self._memory(memory)
+            segments = self._memory(memory)
+            candidates = [p for p in self.store.profiles() if all(
+                a['minutes'] == b['minutes'] and (i == 0 or a['temperature'] == b['temperature'])
+                for i, (a, b) in enumerate(zip(p['segments'], segments)))]
+            if len(candidates) == 1:
+                name = candidates[0]['name']
             profile({"name": "Memoria", "segments": segments})
             target = self._load(memory, segments)
             pv = self.adapter.read(0xCD)[0]

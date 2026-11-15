@@ -40,3 +40,7 @@ Un solo worker es propietario del cliente RTU. HTTP nunca lee ni escribe directa
 - Un reinicio interrumpe la sesión de simulación anterior; no se confunde con reanudar un horno real.
 
 El comunicador histórico usaba PyModbus, reintentos y otros mecanismos ligados a MQTT. Esta entrega conserva mapa, secuencia, worker y verificaciones, pero usa un transporte PTY mínimo con biblioteca estándar. El futuro adaptador físico deberá recuperar y validar parámetros, compatibilidad PyModbus y comportamiento de reconexión contra el archivo físico confirmado. No presentar el transporte simulado como driver físico validado.
+
+## Separación de órdenes en la interfaz actualizada
+
+La API exige `memory` explícita para RUN y rechaza `profile_id` en esa orden. Primero se carga el perfil mediante la acción `load`, que no escribe C4H ni inicia una sesión; después RUN utiliza el programa confirmado de la memoria. El editor muestra C01 como PV y el backend sigue releyendo PV para la adaptación real, sin confiar en la vista previa del navegador.

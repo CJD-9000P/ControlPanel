@@ -14,7 +14,7 @@ def build():
     output = ROOT / "dist"
     output.mkdir(exist_ok=True)
     filename = output / f"cjd-control-panel-{__version__}.tar.gz"
-    paths = [ROOT / n for n in ["cjd_panel", "fuentes_referencia", "tests", "docs", "packaging"]]
+    paths = [ROOT / n for n in ["cjd_panel", "fuentes_referencia", "tests", "docs", "packaging", "ui_reference"]]
     paths += list(ROOT.glob("*.md")) + [ROOT / "requirements.txt", ROOT / ".gitignore"]
     files = sorted({f for p in paths for f in (p.rglob("*") if p.is_dir() else [p])
                     if f.is_file() and "__pycache__" not in f.parts and f.suffix != ".pyc"

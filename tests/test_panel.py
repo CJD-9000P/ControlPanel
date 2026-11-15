@@ -1,4 +1,5 @@
 import csv
+from contextlib import closing
 import io
 import json
 from pathlib import Path
@@ -62,7 +63,7 @@ class PanelTest(unittest.TestCase):
         saved=self.store.save_profile(sample())
         self.order('load',memory=3,profile_id=saved['id'])
         self.assertEqual(self.adapter.furnace.segments(3)[1][0],105)
-        self.order('run',memory=3,profile_id=saved['id'])
+        self.order('run',memory=3)
         self.order('pause');self.assertEqual(self.worker.snapshot()['state'],2)
         self.order('resume');self.order('stop')
         firing=self.store.firings()[0]
@@ -159,7 +160,7 @@ class PanelTest(unittest.TestCase):
                 if calls>=3: values[2]+=1
             return values
         self.adapter.read=corrupt
-        with self.assertRaises(CommunicationError): self.order('run',memory=1,profile_id=p['id'])
+        with self.assertRaises(CommunicationError): self.order('load',memory=1,profile_id=p['id'])
         self.assertFalse(any(a==0xC4 and v==[1] for a,v,_ in self.adapter.furnace.write_log))
 
     def test_api_profiles_csv_roundtrip_and_validation(self):
@@ -195,7 +196,7 @@ class PanelTest(unittest.TestCase):
         self.order('run',memory=1)
         response=self.request('backup')
         backup=Path(self.temp.name)/'backup.sqlite3';backup.write_bytes(response['body'])
-        with sqlite3.connect(backup) as db:
+        with closing(sqlite3.connect(backup)) as db:
             self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0],'ok')
             self.assertEqual(db.execute('SELECT id FROM profiles').fetchone()[0],p['id'])
             self.assertEqual(db.execute('SELECT count(*) FROM firings').fetchone()[0],1)
@@ -206,6 +207,46 @@ class PanelTest(unittest.TestCase):
         p=sample()
         for s in p['segments']:s['minutes']=0
         with self.assertRaises(ValueError): profile(p)
+
+    def test_run_requires_explicit_memory_and_separate_load(self):
+        before=len(self.adapter.furnace.write_log)
+        self.assertEqual(self.request('commands','POST',{'operation':'run'})['status'],400)
+        p=self.store.save_profile(sample())
+        self.assertEqual(self.request('commands','POST',{'operation':'run','memory':1,'profile_id':p['id']})['status'],400)
+        self.assertEqual(len(self.adapter.furnace.write_log),before)
+
+    def test_firing_metadata_and_deletion(self):
+        self.order('run',memory=1)
+        ident=self.store.firings()[0]['id']
+        self.assertEqual(self.request('firings/'+ident,'DELETE')['status'],400)
+        result=self.request('firings/'+ident,'PUT',{'name':'Prueba azul','notes':'Superficie homogénea'})
+        self.assertEqual(result['status'],200)
+        original=self.store.firing(ident)['curve_name']
+        self.order('stop')
+        result=self.request('firings/'+ident)['json']
+        self.assertEqual(result['notes'],'Superficie homogénea')
+        self.assertEqual(result['curve_name'],original)
+        self.assertEqual(self.request('firings/'+ident,'PUT',{'name':'','notes':''})['status'],400)
+        self.assertEqual(self.request('firings/'+ident,'DELETE')['status'],200)
+        self.assertEqual(self.store.firings(),[])
+        with self.store.lock:
+            self.assertEqual(self.store.db.execute('SELECT count(*) FROM readings').fetchone()[0],0)
+            self.assertEqual(self.store.db.execute('SELECT count(*) FROM events WHERE firing_id=?',(ident,)).fetchone()[0],0)
+
+    def test_metrics_use_all_readings_before_chart_reduction(self):
+        from datetime import datetime,timedelta,timezone
+        ident=self.store.start('Histórico',1,sample()['segments'],'import')
+        base=datetime(2026,11,15,tzinfo=timezone.utc)
+        rows=[(ident,(base+timedelta(seconds=i)).isoformat(timespec='milliseconds'),1200 if i==1 else 25,25,1,1,0,1) for i in range(4001)]
+        with self.store.lock,self.store.db:
+            self.store.db.executemany('INSERT INTO readings(firing_id,timestamp,pv,sv,state,step,minutes,memory) VALUES(?,?,?,?,?,?,?,?)',rows)
+        data=self.store.firing(ident,chart=True)
+        self.assertLess(len(data['readings']),2002)
+        self.assertEqual(max(r['pv'] for r in data['readings']),25)
+        self.assertEqual(data['statistics']['pv_max'],1200)
+        self.assertAlmostEqual(data['statistics']['mean_abs_deviation'],1175/4001)
+        self.assertEqual(data['statistics']['duration_seconds'],4000)
+        self.assertEqual(data['statistics']['continuity_percent'],100)
 
     def test_unknown_command_writes_nothing(self):
         before=len(self.adapter.furnace.write_log)
@@ -226,6 +267,44 @@ class RecoveryTest(unittest.TestCase):
                 self.assertIsNotNone(f['ended_at'])
                 self.assertEqual(f['events'][0]['kind'],'interrupted')
             finally:s.close()
+
+
+class AnalysisTest(unittest.TestCase):
+    def test_gaps_and_steps_are_not_invented(self):
+        from cjd_panel.analysis import summarize,curve_key
+        rows=[{'timestamp':f'2026-11-15T00:00:{second:02d}+00:00','pv':pv,'sv':100,'memory':1,'step':step}
+              for second,pv,step in [(0,90,1),(1,100,1),(11,110,1),(12,100,2)]]
+        result=summarize(rows)
+        self.assertEqual(result['gaps'],1)
+        self.assertEqual(result['duration_seconds'],12)
+        self.assertAlmostEqual(result['continuity_percent'],100*2/12)
+        self.assertEqual(result['segments'][0]['observed_seconds'],1)
+        self.assertEqual(result['segments'][1]['observed_seconds'],0)
+        a=sample()['segments'];b=sample()['segments'];b[0]['temperature']=200
+        self.assertEqual(curve_key(a),curve_key(b))
+        b[1]['temperature']+=1
+        self.assertNotEqual(curve_key(a),curve_key(b))
+
+    def test_schema_migration_preserves_old_data(self):
+        with tempfile.TemporaryDirectory() as d:
+            path=Path(d)/'old.sqlite3'
+            with closing(sqlite3.connect(path)) as db, db:
+                db.execute('CREATE TABLE firings(id TEXT PRIMARY KEY,name TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT,status TEXT NOT NULL,memory INTEGER NOT NULL,snapshot TEXT NOT NULL,origin TEXT NOT NULL)')
+                db.execute('INSERT INTO firings VALUES(?,?,?,?,?,?,?,?)',('old','Histórica','2026-11-01T10:00:00+00:00','2026-11-01T11:00:00+00:00','ended',1,json.dumps(sample()['segments']),'app'))
+                db.execute('PRAGMA user_version=1')
+            store=Store(path)
+            try:
+                f=store.firing('old')
+                self.assertEqual(f['name'],'Histórica')
+                self.assertEqual(f['notes'],'')
+                self.assertEqual(f['curve_name'],'Histórica')
+                self.assertEqual(len(f['snapshot']),20)
+                self.assertEqual(store.db.execute('PRAGMA user_version').fetchone()[0],2)
+                backup=path.with_name(path.name+'.pre-schema-2.bak')
+                self.assertTrue(backup.exists())
+                with closing(sqlite3.connect(backup)) as old:
+                    self.assertEqual(old.execute('PRAGMA user_version').fetchone()[0],1)
+            finally:store.close()
 
 
 if __name__=='__main__': unittest.main()

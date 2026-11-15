@@ -29,3 +29,9 @@ Las autopruebas originales de ambos archivos pasaron. La batería nueva usa SQLi
 ## Distribución pública
 
 El comunicador histórico original (tanto la copia raíz como la de `fuentes_referencia/`) y el ZIP original no se suben al repositorio ni se empaquetan: incluyen configuración de conexión de la instalación. Permanecen intactos en local. Los hashes de ese comunicador describen la fuente local recibida; no implican que se distribuya con el repositorio público. El simulador y los dos manuales sí se incluyen.
+
+## Paquete de actualización de interfaz
+
+`actualiza.zip` añade especificación visual, manual de usuario, siete capturas y tres tarjetas históricas. Se integran las instrucciones nuevas de AGENTS sin sobreescribir el estado técnico actual con versiones anteriores de PLAN/ARQUITECTURA/DEPENDENCIAS. La especificación se conserva en raíz. Referencias visuales y JS originales verificadas byte a byte contra el ZIP; hashes en `REFERENCIAS_UI_SHA256.json`.
+
+Las capturas muestran la aplicación histórica, no son capturas del panel nuevo. Los originales del comunicador y ambos ZIP permanecen locales; la distribución del producto contiene solo las referencias sin configuración privada. Las comprobaciones de sintaxis/lógica JavaScript no sustituyen una prueba real de navegador.
