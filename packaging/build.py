@@ -11,10 +11,15 @@ from cjd_panel import __version__
 
 
 def build():
+    import importlib.util
+    spec=importlib.util.spec_from_file_location("cjd_launcher_generator",Path(__file__).with_name("generate_launcher.py"))
+    generator=importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(generator)
+    generator.generate(ROOT,__version__)
     output = ROOT / "dist"
     output.mkdir(exist_ok=True)
     filename = output / f"cjd-control-panel-{__version__}.tar.gz"
-    paths = [ROOT / n for n in ["cjd_panel", "fuentes_referencia", "tests", "docs", "packaging", "ui_reference", "scripts"]]
+    paths = [ROOT / n for n in ["cjd_panel", "fuentes_referencia", "tests", "docs", "packaging", "ui_reference", "scripts", "bin"]]
     paths += list(ROOT.glob("*.md")) + [ROOT / "requirements.txt", ROOT / "requirements-mqtt.txt", ROOT / "mqtt.example.json", ROOT / "modbus.example.json", ROOT / "requirements-modbus.txt", ROOT / "requirements-bootstrap.txt", ROOT / "installer-wheels.json", ROOT / "instalar.sh", ROOT / "instalar-fedora.sh", ROOT / "iniciar.sh", ROOT / ".gitignore"]
     files = sorted({f for p in paths for f in (p.rglob("*") if p.is_dir() else [p])
                     if f.is_file() and "__pycache__" not in f.parts and f.suffix != ".pyc"

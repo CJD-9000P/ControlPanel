@@ -1,6 +1,12 @@
 # Cambios del producto
 
-## 0.7.1
+## 0.7.2
+
+- Lanzador descargable bin/instalar-cjd.sh: comprueba Linux, distribución, usuario normal, curl/tar/mktemp y Python >=3.11 con SQLite/SSL/venv; ofrece paquetes base y abre el asistente de la misma versión.
+- Generación automática durante empaquetado solo cuando cambia la versión fuente; conserva contenido y fecha si no cambia. Descarga por HTTPS desde la rama de versión y comprueba la versión del archivo antes de iniciar el asistente.
+- Modo --check sin descarga ni instalación y modo --version. El lanzador se incluye en paquete y copia instalada.
+
+## 0.7.1 — referencia histórica, sustituida
 
 - Lanzador específico Fedora y comprobación del entorno Python tras instalar paquetes DNF; rechazo explícito de instalación como root y Fedora Atomic no verificado.
 - Preparación opcional de permisos dialout y puerto HTTP en una zona firewalld elegida, con reglas runtime/permanentes y sin recarga global. No conecta al horno ni cambia SELinux.

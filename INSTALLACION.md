@@ -39,3 +39,23 @@ journalctl --user -u cjd-panel.service
 Abre `http://localhost:PUERTO` en el equipo instalado, o `http://IP_DEL_EQUIPO:PUERTO` si elegiste acceso por red. Sin MQTT la aplicación funciona igualmente.
 
 Para instalación sin Internet, prepara en otro equipo los wheels exactos enumerados en `installer-wheels.json` y ejecuta `./instalar.sh --wheelhouse /ruta/wheels`. Se comprueban sus hashes igualmente; los paquetes del sistema deben estar ya disponibles.
+
+## Lanzador descargable y requisitos mínimos
+
+En una copia local del proyecto puedes comprobar sin instalar ni descargar:
+
+```bash
+./bin/instalar-cjd.sh --check
+```
+
+Para descargar el lanzador publicado y abrir el asistente desde una terminal Bash, con curl disponible, una sola línea:
+
+```bash
+bash -c 'f=$(mktemp) && curl -fL https://raw.githubusercontent.com/CJD-9000P/ControlPanel/main/bin/instalar-cjd.sh -o "$f" && sh "$f"'
+```
+
+Usa tu usuario normal, sin sudo. Evita `curl | sh`: el asistente necesita conservar la entrada del teclado para sus preguntas. El lanzador comprueba Linux, Fedora/Debian/Ubuntu, usuario sin privilegios y ausencia de Atomic/Silverblue; verifica curl, tar, mktemp y Python >=3.11 con SQLite, SSL y venv. Si faltan paquetes ofrece instalarlos con apt o DNF, con elevación puntual. El comando de descarga inicial necesita curl y mktemp; si faltan, un administrador debe instalarlos antes. systemd es necesario solo si eliges servicio; MQTT y USB conservan sus opciones del asistente. No se fija un mínimo de RAM o disco no medido.
+
+Descarga el código de su propia rama `version/VERSION`, comprueba la versión sin ejecutar el Python descargado y abre el asistente. Los temporales se conservan para diagnóstico. No ejecuta el panel, no modifica credenciales ni conecta al horno antes de las opciones y confirmaciones del asistente. Si falta la publicación de esa versión o falla la descarga, no instala. HTTPS y comprobación de versión no equivalen a una firma criptográfica del paquete.
+
+`python3 packaging/generate_launcher.py` genera el archivo en `bin` a partir de `packaging/instalar-cjd.sh.in`. `python3 packaging/build.py` lo llama automáticamente. La versión sale exclusivamente de `cjd_panel/__init__.py`: si coincide con la del archivo generado, no lo reescribe ni cambia su fecha, aunque cambie la plantilla. Para publicar cambios del lanzador hay que incrementar la versión. El flujo de publicación debe subir el código y crear su rama de versión antes de anunciar el comando de instalación.

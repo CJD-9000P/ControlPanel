@@ -15,8 +15,9 @@ class PackagingPrivacyTest(unittest.TestCase):
         spec.loader.exec_module(build)
         with tempfile.TemporaryDirectory() as tmp:
             work=Path(tmp)
-            for name in ['cjd_panel','docs','scripts']:(work/name).mkdir()
+            for name in ['cjd_panel','docs','scripts','packaging']:(work/name).mkdir()
             for name in ['requirements.txt','requirements-mqtt.txt','requirements-modbus.txt','.gitignore']:(work/name).write_text('')
+            (work/'packaging/instalar-cjd.sh.in').write_text((root/'packaging/instalar-cjd.sh.in').read_text())
             example=json.loads((root/'mqtt.example.json').read_text())
             (work/'mqtt.example.json').write_text(json.dumps(example))
             (work/'modbus.example.json').write_text((root/'modbus.example.json').read_text())

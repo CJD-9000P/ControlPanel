@@ -6,6 +6,8 @@ El modo local no necesita Internet ni Home Assistant. MQTT es opcional y usa su 
 
 ## Instalador
 
+El lanzador `bin/instalar-cjd.sh` permite descargar e instalar la versión publicada; `--check` comprueba requisitos sin modificar el sistema. Consulta el [comando de una línea y la generación por versión](INSTALLACION.md#lanzador-descargable-y-requisitos-mínimos).
+
 En Fedora ejecuta `./instalar-fedora.sh`; en Debian/Ubuntu, `./instalar.sh`, como usuario normal. Consulta también [la guía Fedora](docs/FEDORA.md). Pregunta por MQTT, contraseña web, red, soporte USB y servicio; prepara dependencias aisladas, SQLite y servidor HTTP. Consulta [la instalación y actualización](INSTALLACION.md). No cambia la instalación actual hasta que ejecutes y confirmes el asistente.
 
 ## Arranque

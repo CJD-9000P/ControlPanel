@@ -85,7 +85,7 @@ def dependencies(root,mqtt,usb,wheelhouse=None):
 def copy_sources(source,destination):
     # La lista pública del empaquetador excluye datos y todos los archivos privados.
     # Misma selección que el paquete distribuible, sin generar un tar en el origen.
-    roots=['cjd_panel','scripts','packaging','tests','docs','ui_reference','fuentes_referencia']
+    roots=['bin','cjd_panel','scripts','packaging','tests','docs','ui_reference','fuentes_referencia']
     files=[p for name in roots for p in (source/name).rglob('*') if p.is_file()]
     files+=list(source.glob('*.md'))+list(source.glob('requirements*.txt'))
     files += [source/n for n in ('installer-wheels.json','instalar.sh','instalar-fedora.sh','iniciar.sh','.gitignore','mqtt.example.json','modbus.example.json')]

@@ -107,3 +107,7 @@ Verificación actual del instalador: se han probado sockets HTTP reales fuera de
 ## Destino Fedora
 
 Lanzador `instalar-fedora.sh` sobre el asistente común, DNF para paquetes base y preparación opcional del anfitrión mediante `scripts/fedora_setup.py`: grupo dialout y regla HTTP en zona firewalld elegida. Se conserva systemd de usuario con linger, SQLite y HTTP de Python. No se cambia SELinux ni se conecta el puerto serie durante la instalación. Fedora Atomic queda fuera de este procedimiento. Pruebas simuladas del anfitrión Fedora; instalación nativa y versión exacta del equipo final pendientes de comprobar. Véase [guía Fedora](docs/FEDORA.md).
+
+## Lanzador generado por versión
+
+`bin/instalar-cjd.sh` se deriva de la versión fuente del producto al empaquetar; no se reescribe mientras esa versión coincida. Requiere shell POSIX y herramientas del anfitrión curl, tar y mktemp para descarga/extracción; apt/DNF y sudo son opcionales para preparar requisitos faltantes. Versiones de esas herramientas en cada destino: pendiente de comprobar. No hay dependencias Python nuevas ni cambios de versiones bloqueadas. Se comprueba la versión descargada antes de ejecutar el asistente. Los datos, secretos y servicio actuales no se alteran al generar el lanzador o ejecutar --check.

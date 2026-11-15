@@ -100,3 +100,7 @@ Herramienta nueva: pip 26.3, solo instalación/empaquetado, Linux/Python >=3.11,
 ## Preparación del anfitrión Fedora
 
 Sin nuevas bibliotecas Python. Herramientas del anfitrión: DNF (paquetes base), sudo (elevación puntual), usermod/grupo dialout (permisos USB opcionales), firewalld/firewall-cmd (puerto HTTP opcional), systemd/loginctl (servicio). Sus versiones en Fedora están pendientes de comprobar; no se instalan como dependencias pip ni se incluyen en el paquete. La ausencia de firewalld no bloquea el uso local. Fedora con DNF es el destino; Atomic/Silverblue requiere otro procedimiento. Los comandos Fedora se prueban mediante dobles en Debian, sin afirmar una validación nativa. Las versiones bloqueadas de las dependencias Python no cambian.
+
+## Lanzador generado por versión
+
+`bin/instalar-cjd.sh` se deriva de la versión fuente del producto al empaquetar; no se reescribe mientras esa versión coincida. Requiere shell POSIX y herramientas del anfitrión curl, tar y mktemp para descarga/extracción; apt/DNF y sudo son opcionales para preparar requisitos faltantes. Versiones de esas herramientas en cada destino: pendiente de comprobar. No hay dependencias Python nuevas ni cambios de versiones bloqueadas. Se comprueba la versión descargada antes de ejecutar el asistente. Los datos, secretos y servicio actuales no se alteran al generar el lanzador o ejecutar --check.
