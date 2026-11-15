@@ -1,0 +1,17 @@
+[Unit]
+Description=CJD Control Panel (simulador aislado)
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/cjd-control-panel
+ExecStart=/usr/bin/python3 -m cjd_panel --data-dir %h/.local/share/cjd-control-panel
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target
