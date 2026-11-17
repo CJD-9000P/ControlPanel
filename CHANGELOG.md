@@ -1,6 +1,16 @@
 # Cambios del producto
 
-## 0.7.3
+## 0.7.5
+
+- Control del horno más compacto, con la leyenda debajo de la gráfica de la memoria.
+- Inicio programado de una memoria mediante fecha y hora, confirmación desde Iniciar y cuenta atrás con cancelación. El worker conserva la programación mientras el servicio está en ejecución.
+
+## 0.7.4 — referencia histórica, sustituida
+
+- Mis curvas da más espacio a las gráficas, marca los límites de tramo y agrupa las acciones en botones compactos.
+- La descripción de la biblioteca aparece junto al contador y se simplifican la cabecera de Mis curvas y el indicador del modo físico.
+
+## 0.7.3 — referencia histórica, sustituida
 
 - Seguimiento de la cocción más compacto, con barra de progreso del tramo y puntos de referencia en la gráfica.
 - Las memorias en Mis curvas llevan al perfil coincidente o permiten crear uno a partir de su contenido.

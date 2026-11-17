@@ -1,5 +1,6 @@
 import csv
 from contextlib import closing
+from datetime import datetime, timedelta, timezone
 import io
 import json
 from pathlib import Path
@@ -78,6 +79,27 @@ class PanelTest(unittest.TestCase):
         self.assertEqual(imported['json']['samples'],firing['samples'])
         rows=self.store.firing(imported['json']['id'])['readings']
         self.assertEqual([r['pv'] for r in rows],[r['pv'] for r in detail['readings']])
+
+    def test_scheduled_start_and_cancellation(self):
+        saved = self.store.save_profile(sample())
+        self.order('load', memory=3, profile_id=saved['id'])
+        future = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
+        self.order('schedule_start', memory=3, start_at=future)
+        self.assertEqual(self.worker.snapshot()['scheduled_start']['memory'], 3)
+        self.assertEqual(self.worker.snapshot()['state'], 0)
+        with self.assertRaisesRegex(ValueError, 'Cancela primero'):
+            self.order('run', memory=3)
+        self.order('cancel_start')
+        self.assertIsNone(self.worker.snapshot()['scheduled_start'])
+
+        due = (datetime.now(timezone.utc) + timedelta(seconds=1)).isoformat()
+        self.order('schedule_start', memory=3, start_at=due)
+        limit = time.monotonic() + 5
+        while self.worker.snapshot()['state'] == 0 and time.monotonic() < limit:
+            time.sleep(.05)
+        snapshot = self.worker.snapshot()
+        self.assertIsNone(snapshot['scheduled_start'])
+        self.assertEqual((snapshot['state'], snapshot['memory']), (1, 3))
 
     def test_c01_adaptation_does_not_edit_library(self):
         p=sample();p['segments'][0]['temperature']=50

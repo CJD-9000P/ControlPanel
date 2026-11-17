@@ -2,6 +2,7 @@
 from collections import deque
 from concurrent.futures import Future
 import copy
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -25,6 +26,7 @@ class Worker:
         self.lock = threading.RLock()
         self.state = {"online": False, "mode": self.mode, "error": "Conectando con el programador…"}
         self.memories = {}
+        self.scheduled = None
         self.recent = deque(maxlen=600)
         self.active = None
         self.command_origin = "app"
@@ -63,6 +65,9 @@ class Worker:
             result.update(communication_status=status, last_success_age_seconds=age,
                           freshness_limit_seconds=self.freshness_limit, physical_usb_supported=self.adapter_factory is not None or self.mode=='physical',
                           simulator_enabled=self.mode == 'simulator', mode_generation=self.generation,
+                          scheduled_start=copy.deepcopy(self.scheduled and {
+                              key: self.scheduled[key] for key in ('start_at', 'memory')
+                          }),
                           port=getattr(self.adapter,'port',None))
             return result
 
@@ -76,6 +81,7 @@ class Worker:
                     except Exception as exc:
                         self._offline(exc)
                     next_poll = time.monotonic() + self.interval
+                self._start_if_due()
                 try:
                     operation, data, future, origin, deadline, guard, generation = self.queue.get(timeout=0.05)
                 except queue.Empty:
@@ -111,6 +117,7 @@ class Worker:
                     future.set_exception(RuntimeError("Servicio detenido."))
 
     def _offline(self, exc):
+        self._cancel_start("Se perdió la comunicación con el programador.")
         with self.lock:
             was_online = self.state.get("online")
             self.state = {**self.state, "online": False, "error": str(exc)}
@@ -161,6 +168,41 @@ class Worker:
             self.offline_reported = False
             self.recent.append(s)
         return s
+
+    def _cancel_start(self, reason):
+        with self.lock:
+            scheduled, self.scheduled = self.scheduled, None
+        if scheduled is not None:
+            self.store.event("schedule_cancelled", "system", reason)
+
+    def _start_if_due(self):
+        with self.lock:
+            scheduled = self.scheduled
+        if scheduled is None:
+            return
+        if (self.state.get("state") != 0 or self.generation != scheduled["generation"]
+                or self.memories.get(scheduled["memory"]) != scheduled["segments"]):
+            self._cancel_start("Cancelada la próxima cocción: cambió el estado, la conexión o el programa.")
+            return
+        remaining = scheduled["timestamp"] - time.time()
+        if remaining > 0:
+            return
+        if remaining < -30:
+            self._cancel_start("Cancelada la próxima cocción: pasó la hora programada.")
+            return
+        with self.lock:
+            self.scheduled = None
+        self.command_deadline = time.monotonic() + 30 + remaining
+        try:
+            self._execute("run", {"memory": scheduled["memory"]}, deadline=self.command_deadline,
+                          scheduled=scheduled)
+        except Exception as exc:
+            self.store.event("schedule_error", "system", f"Inicio programado: {exc}", self.active)
+            if isinstance(exc, (CommunicationError, OSError)):
+                self._offline(exc)
+        finally:
+            self.command_deadline = None
+            self.command_adapter_epoch = None
 
     def _stopped(self):
         if self.adapter.read(0xCA)[0] != 0:
@@ -273,9 +315,40 @@ class Worker:
             self._offline(exc)
         return {'message': 'Simulador activado.' if mode=='simulator' else 'Modo físico seleccionado; consulta el estado de MODBUS.', 'state': self.snapshot()}
 
-    def _execute(self, operation, data, *, origin="app", deadline=None, guard=None):
+    def _execute(self, operation, data, *, origin="app", deadline=None, guard=None, scheduled=None):
+        if operation == 'cancel_start':
+            self._cancel_start("Cocción programada cancelada desde el panel.")
+            return {"message": "Programación cancelada.", "state": self.snapshot()}
+        if operation == 'schedule_start':
+            if self.scheduled is not None:
+                raise ValueError("Ya hay una cocción programada.")
+            memory = integer(data.get('memory'), "Memoria", 1, 4)
+            raw = data.get('start_at')
+            if not isinstance(raw, str):
+                raise ValueError("Indica una fecha y hora de inicio.")
+            when = datetime.fromisoformat(raw)
+            self._poll()
+            if when.tzinfo is None or when.timestamp() <= time.time():
+                raise ValueError("Elige una fecha y hora futura.")
+            if self.state["state"] != 0:
+                raise ValueError("El programador debe estar PARADO para programar la próxima cocción.")
+            segments = self.memories[memory]
+            profile({"name": "Memoria", "segments": segments})
+            with self.lock:
+                self.scheduled = {"start_at": when.astimezone(timezone.utc).isoformat(),
+                                  "timestamp": when.timestamp(), "memory": memory,
+                                  "generation": self.generation, "segments": segments}
+            self.store.event("scheduled_start", origin, f"Inicio programado para memoria {memory} ({self.scheduled['start_at']}).")
+            return {"message": "Cocción programada.", "state": self.snapshot()}
+        if operation == 'run' and self.scheduled is not None:
+            raise ValueError("Cancela primero la cocción programada.")
         if operation == 'set_mode':
-            return self._switch_mode(data.get('mode'))
+            previous_generation = self.generation
+            result = self._switch_mode(data.get('mode'))
+            if self.generation != previous_generation:
+                self._cancel_start("Cancelada la próxima cocción al cambiar la conexión.")
+                result["state"] = self.snapshot()
+            return result
         if operation == "simulate":
             if self.mode != 'simulator':
                 raise ValueError('Las herramientas del simulador están desactivadas en modo físico.')
@@ -309,6 +382,9 @@ class Worker:
         elif operation == "select":
             self._write_verified(0xA0, [memory])
         elif operation == "run":
+            if scheduled is not None and (self.generation != scheduled["generation"]
+                                          or self.memories[memory] != scheduled["segments"]):
+                raise ValueError("Cambió el programa de la memoria seleccionada.")
             self._write_verified(0xA0, [memory])
             segments = self._memory(memory)
             candidates = [p for p in self.store.profiles() if all(

@@ -88,8 +88,8 @@ function renderState(){
  $('connection-mode').value=physical?'physical':'simulator';
  $('connection-mode').options[1].textContent='USB · '+(state.port||'/dev/ttyUSB1');
  $('connection-mode').disabled=busy||!!state.server_unavailable||!state.physical_usb_supported||!!state.active_firing||[1,2].includes(state.state);
- $('mode-label').textContent=physical?'':'SIMULADOR AISLADO';$('mode-label').hidden=physical;$('simulator-inertia-note').hidden=physical;
- $('mode-description').textContent=physical?`Programador CJD · ${state.port||'/dev/ttyUSB1'}`:'Datos ficticios · sin conexión al horno físico';
+ $('mode-label').textContent=physical?'':'SIMULADOR AISLADO';$('mode-label').hidden=physical;
+ $('mode-description').hidden=physical;
  $('simulator-tools').hidden=physical;
  document.querySelectorAll('[data-sim]').forEach(b=>b.disabled=busy||physical);
  if(lastModeGeneration!==null&&lastModeGeneration!==state.mode_generation){$('run-memory').value='';journey={memory:null,step:0,fraction:0,active:null};lastControlMemoryKey=lastMemoryKey=lastTableKey='';}
@@ -103,8 +103,16 @@ function renderState(){
  if(online&&state.state===0&&lastState!==null&&lastState!==0)$('run-memory').value='';
  if(online)lastState=state.state;
  const armed=['1','2','3','4'].includes($('run-memory').value);
+ const scheduled=state.scheduled_start;
+ $('start-at').disabled=busy||!online||state.state!==0||!!scheduled;
+ $('scheduled-start').hidden=!scheduled;
+ $('cancel-start').disabled=busy||!!state.server_unavailable;
+ if(scheduled){
+  const minutes=Math.max(0,Math.ceil((Date.parse(scheduled.start_at)-Date.now())/60000));
+  $('start-countdown').textContent=`Memoria ${scheduled.memory} · ${date(scheduled.start_at)} · faltan ${Math.floor(minutes/60)} h ${minutes%60} min`;
+ }
  $('run-memory').disabled=busy||!online||state.state!==0;
- $('run').disabled=busy||!online||state.state!==0||!armed;$('pause').disabled=busy||!online||state.state!==1;$('resume').disabled=busy||!online||state.state!==2;$('stop').disabled=busy||!online||state.state===0;
+ $('run').disabled=busy||!online||state.state!==0||!armed||!!scheduled;$('pause').disabled=busy||!online||state.state!==1;$('resume').disabled=busy||!online||state.state!==2;$('stop').disabled=busy||!online||state.state===0;
  $('control-memories').hidden=[1,2].includes(state.state);$('memory-choice-help').hidden=[1,2].includes(state.state);
  $('selected-memory').textContent=!online?'Memoria sin confirmar': [1,2].includes(state.state)?`Memoria activa: ${state.memory}`:armed?`Memoria ${$('run-memory').value} seleccionada`:'Elige una memoria en las tarjetas.';
  const selectedSource=state.memories?.[$('run-memory').value];const selectedMatches=selectedSource?matches(selectedSource):[];if(online&&state.state===0&&armed&&selectedMatches.length)$('selected-memory').textContent+=' · '+selectedMatches.map(p=>p.name).join(' / ');
@@ -117,6 +125,7 @@ function renderState(){
 }
 function renderProgram(){
  const active=state.online&&[1,2].includes(state.state);const memory=active?state.memory:Number($('run-memory').value)||state.memory;
+ $('segment-duration').hidden=true;
  $('segment-progress').value=0;$('segment-progress').setAttribute('aria-valuetext','Sin tramo activo');
  const source=state.memories?.[memory];if(!source){$('program-chart').innerHTML='<div class="empty">Esperando el programa de las memorias.</div>';$('control-segments').innerHTML='';return;}
  const sameJourney=journey.memory===memory;
@@ -137,9 +146,10 @@ function renderProgram(){
  document.querySelectorAll('[data-control-step]').forEach(row=>{const n=Number(row.dataset.controlStep);row.classList.toggle('segment-active',active&&n===rawStep);row.classList.toggle('segment-completed',state.online&&journey.memory===memory&&n<journey.step);if(active&&n===rawStep)row.setAttribute('aria-current','step');else row.removeAttribute('aria-current');});
  const programmed=active&&rawStep>=1&&rawStep<=19?source[rawStep-1].minutes:null;
  const percent=programmed>0&&Number.isFinite(state.minutes)?Math.max(0,Math.min(100,state.minutes/programmed*100)):0;$('segment-progress').value=percent;$('segment-progress').setAttribute('aria-valuetext',programmed!==null?fmt(percent,0)+' % del tiempo programado':'Sin tramo activo');
- $('segment-duration').textContent=programmed!==null?`de ${fmt(programmed,0)} min programados · tiempo virtual`:'Minutos virtuales · registro CCH';
+ $('segment-duration').textContent=programmed!==null?`de ${fmt(programmed,0)} min programados · tiempo virtual`:'';
+ $('segment-duration').hidden=programmed===null;
  $('segment-target').textContent=active&&rawStep<=19?`Objetivo: ${source[rawStep].temperature} °C`:'Sin tramo activo';
- $('progress-method').textContent=!state.online?'Sin comunicación: el avance no está confirmado.':active?'Avance visual calculado con SV en rampas y CCH en mesetas; no mide la temperatura de la pieza.':'Se conserva el último avance observado; PARADO no permite distinguir por sí solo fin natural de parada manual.';
+ $('progress-method').textContent=!state.online?'Sin comunicación: el avance no está confirmado.':active?'Avance visual calculado con SV en rampas y CCH en mesetas; no mide la temperatura de la pieza.':'';
 }
 function updatePhysicalBadges(){document.querySelectorAll('[data-match-profile]').forEach(el=>{const p=profiles.find(p=>p.id===el.dataset.matchProfile);if(!p)return;const ids=state.online?Object.entries(state.memories||{}).filter(([,s])=>matches(s).some(m=>m.id===p.id)).map(([id])=>id):[];el.textContent=!state.online?'Memorias sin confirmar':ids.length?'Coincide con '+(ids.length===1?'memoria ':'memorias ')+ids.join(', ')+' del programador':'Solo en biblioteca';});}
 function renderEvents(target,events,limit=15){const origins={app:'Aplicación',mqtt:'Home Assistant',observed:'Observado',system:'Sistema',import:'Importado'};target.innerHTML=events.length?events.slice(0,limit).map(e=>`<div class="event-row"><time>${escapeHTML(date(e.timestamp))}</time><span>${escapeHTML(e.message)}</span><span class="event-origin">${origins[e.origin]||escapeHTML(e.origin)}</span></div>`).join(''):'<div class="empty">Sin eventos registrados.</div>';}
@@ -153,8 +163,8 @@ async function navigate(next){if(next===page)return;if(dirty&&!await confirmActi
  if(page==='curves'){await loadProfiles();renderMemories();}if(page==='history')await loadHistory();}
 async function loadProfiles(){profiles=await api('profiles');renderProfileList();lastMemoryKey='';lastControlMemoryKey='';renderMemories();}
 function renderProfileList(){const search=$('profile-search').value.toLocaleLowerCase(),filtered=profiles.filter(p=>(p.name+' '+p.notes).toLocaleLowerCase().includes(search));$('profile-count').textContent=`${profiles.length} curvas guardadas`;
- $('profile-list').innerHTML=filtered.length?filtered.map(p=>`<article id="profile-${escapeHTML(p.id)}" class="profile-card" tabindex="-1"><div><h2>${escapeHTML(p.name)}</h2><div class="profile-metrics"><span class="pill">${metrics(p.segments)}</span><span class="pill" data-match-profile="${p.id}"></span></div><p class="profile-description">${escapeHTML(p.notes||'Sin descripción')}</p><p class="profile-meta">Modificada: ${date(p.updated_at)}</p></div><div id="mini-${p.id}" class="chart chart-mini"></div><div class="profile-actions"><button class="button outline" data-profile-action="load" data-id="${p.id}">↑ Cargar</button><button class="button secondary" data-profile-action="edit" data-id="${p.id}">✎ Editar</button><button class="button secondary" data-profile-action="duplicate" data-id="${p.id}">⧉ Duplicar</button><button class="button danger" data-profile-action="delete" data-id="${p.id}">Eliminar</button></div></article>`).join(''):'<div class="empty"><h2>'+ (profiles.length?'No hay coincidencias':'Todavía no tienes curvas guardadas')+'</h2><p>Crea una curva o copia una memoria del programador.</p></div>';
- for(const p of filtered)drawChart($('mini-'+p.id),[{color:colors[0],points:curvePoints(previewSegments(p.segments))}],{axis:'C01 = PV al cargar / iniciar'});updatePhysicalBadges();renderState();}
+ $('profile-list').innerHTML=filtered.length?filtered.map(p=>`<article id="profile-${escapeHTML(p.id)}" class="profile-card" tabindex="-1"><div><h2>${escapeHTML(p.name)}</h2><div class="profile-metrics"><span class="pill">${metrics(p.segments)}</span><span class="pill" data-match-profile="${p.id}"></span></div><p class="profile-description">${escapeHTML(p.notes||'Sin descripción')}</p><p class="profile-meta">Modificada: ${date(p.updated_at)}</p></div><div id="mini-${p.id}" class="chart chart-mini"></div><div class="profile-actions"><button class="button outline" data-profile-action="load" data-id="${p.id}">↑ Cargar</button><button class="button secondary" data-profile-action="edit" data-id="${p.id}">✎ Editar</button><button class="button secondary" data-profile-action="duplicate" data-id="${p.id}">⧉ Duplicar</button><button class="button secondary" data-profile-action="delete" data-id="${p.id}">Eliminar</button></div></article>`).join(''):'<div class="empty"><h2>'+ (profiles.length?'No hay coincidencias':'Todavía no tienes curvas guardadas')+'</h2><p>Crea una curva o copia una memoria del programador.</p></div>';
+ for(const p of filtered)drawChart($('mini-'+p.id),[{color:colors[0],points:curvePoints(previewSegments(p.segments)),nodes:true}],{axis:'C01 = PV al cargar / iniciar'});updatePhysicalBadges();renderState();}
 async function editProfile(p,ident=null){if(dirty&&!await confirmAction('¿Cambiar de curva?','Los cambios sin guardar se perderán.'))return;selected=ident;draft=structuredClone(p);dirty=false;$('curves-list-view').hidden=true;$('editor-view').hidden=false;$('editor-title').textContent=ident?'Editar curva':'Nueva curva';$('profile-name').value=p.name;$('profile-notes').value=p.notes||'';$('export-profile').disabled=!ident;
  $('segments').innerHTML=p.segments.slice(0,19).map((s,i)=>`<tr><td>${i+1}</td><td>${i===0?'<strong class="initial-pv" id="initial-pv">PV · —</strong>':`<span data-start="${i}">${s.temperature}</span> °C`}</td><td><input type="number" min="0" max="32767" step="1" required value="${s.minutes}" data-minutes="${i}" aria-label="Duración del tramo ${i+1}"></td><td><input type="number" min="0" max="1200" step="1" required value="${p.segments[i+1].temperature}" data-temperature="${i+1}" aria-label="Temperatura final C${i+2}"></td></tr>`).join('');refreshEditorPV();$('profile-name').focus();}
 function formProfile(){const fallback=draft?.segments?.[0]?.temperature??0;return{name:$('profile-name').value,notes:$('profile-notes').value,segments:Array.from({length:20},(_,i)=>({temperature:i?Number(document.querySelector(`[data-temperature="${i}"]`).value):state.online?state.pv:fallback,minutes:i<19?Number(document.querySelector(`[data-minutes="${i}"]`).value):0}))};}
@@ -225,7 +235,16 @@ $('mqtt-connection').onclick=()=>$('mqtt-dialog').showModal();
 $('connection-mode').onchange=safe(async()=>{const mode=$('connection-mode').value;try{await command('set_mode',{mode});}finally{await refresh();}});
 $('run-memory').onchange=()=>{renderState();};
 $('control-memories').onclick=safe(async e=>{const b=e.target.closest('[data-preview-memory]');if(b&&!b.disabled){$('run-memory').value=b.dataset.previewMemory;lastControlMemoryKey='';$('control-memories').innerHTML=memoryMarkup(true);renderState();}});
-$('run').onclick=safe(async()=>{const memory=Number($('run-memory').value);if(![1,2,3,4].includes(memory))throw Error('Elige explícitamente una memoria antes de iniciar.');if(await confirmAction('Iniciar desde memoria '+memory,`Se utilizará el programa ya verificado de la memoria ${memory}. C01 se adapta a PV antes de RUN. No se carga un perfil de la biblioteca en esta acción.`))await command('run',{memory});});
+$('cancel-start').onclick=safe(()=>command('cancel_start'));
+$('run').onclick=safe(async()=>{const memory=Number($('run-memory').value);if(![1,2,3,4].includes(memory))throw Error('Elige explícitamente una memoria antes de iniciar.');const startAt=$('start-at').value;if(startAt){
+ const time=new Date(startAt);
+ if(!Number.isFinite(time.getTime())||time.getTime()<=Date.now())throw Error('Elige una fecha y hora futura.');
+ if(await confirmAction('Programar memoria '+memory,`El programador iniciará esta memoria el ${date(time)}.`)){
+  await command('schedule_start',{memory,start_at:time.toISOString()});
+  $('start-at').value='';
+ }
+ return;
+}if(await confirmAction('Iniciar desde memoria '+memory,`Se utilizará el programa ya verificado de la memoria ${memory}. C01 se adapta a PV antes de RUN. No se carga un perfil de la biblioteca en esta acción.`))await command('run',{memory});});
 $('pause').onclick=safe(()=>command('pause'));$('resume').onclick=safe(()=>command('resume'));
 $('stop').onclick=safe(async()=>{if(await confirmAction('Parar la cocción','Se enviará STOP y se comprobará PARADO. El historial conservará las lecturas y eventos.'))await command('stop');});
 for(const b of document.querySelectorAll('[data-sim]'))b.onclick=safe(()=>command('simulate',{action:b.dataset.sim}));
@@ -251,7 +270,7 @@ $('delete-selected').onclick=safe(async()=>{
  if(!await confirmAction(`Eliminar ${ids.length} cocciones seleccionadas`,`Se eliminarán sus lecturas, eventos y observaciones.${firingDirty?' Se perderán las observaciones sin guardar.':''}`))return;
  let deleted=0;try{for(const id of ids){await api('firings/'+id,{method:'DELETE'});selectedFirings.delete(id);deleted++;if(details.some(f=>f.id===id)){details=[];detailID=null;firingDirty=false;$('history-detail').hidden=true;}}}catch(e){throw Error(`Eliminadas ${deleted} de ${ids.length}. ${e.message}`);}finally{await loadHistory();}toast(`Eliminadas ${deleted} cocciones.`);
 });
-for(const [button,target,label] of [['toggle-program-chart','program-chart','gráfica'],['toggle-program-table','program-table','tabla']])$(button).onclick=()=>{const el=$(target);el.hidden=!el.hidden;$(button).textContent=(el.hidden?'Mostrar ':'Ocultar ')+label;$(button).setAttribute('aria-expanded',String(!el.hidden));};
+for(const [button,target,label] of [['toggle-program-chart','program-chart-panel','gráfica'],['toggle-program-table','program-table','tabla']])$(button).onclick=()=>{const el=$(target);el.hidden=!el.hidden;$(button).textContent=(el.hidden?'Mostrar ':'Ocultar ')+label;$(button).setAttribute('aria-expanded',String(!el.hidden));};
 $('clear-selection').onclick=()=>{selectedFirings.clear();renderHistory();};
 for(const id of ['show-sv','show-deviation','show-program','show-segments','show-events'])$(id).onchange=renderHistoryChart;
 $('export-firing').onclick=safe(()=>download('firings/'+detailID+'/csv','coccion-'+detailID+'.csv'));
