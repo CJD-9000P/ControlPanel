@@ -13,6 +13,7 @@ window.addEventListener('pointerdown',()=>{pointerDown=true;},{passive:true});
 window.addEventListener('pointerup',()=>{setTimeout(()=>{pointerDown=false;},0);},{passive:true});
 window.addEventListener('pointercancel',()=>{pointerDown=false;},{passive:true});
 let toastTimer,lastControlMemoryKey='',lastMemoryKey='',lastTableKey='',lastProfileKey='',historyListKey='';
+let segmentClock=null;
 let journey={memory:null,step:0,fraction:0,active:null},lastState=null,lastModeGeneration=null;
 function toast(message,error=false){clearTimeout(toastTimer);$('toast').textContent=message;$('toast').className=error?'error':'';$('toast').hidden=false;toastTimer=setTimeout(()=>$('toast').hidden=true,error?10000:5000);}
 function safe(fn){return async(...args)=>{try{await fn(...args);}catch(e){toast(e.message,true);}};}
@@ -89,7 +90,7 @@ function renderState(){
  $('connection-mode').options[1].textContent='USB · '+(state.port||'/dev/ttyUSB1');
  $('connection-mode').disabled=busy||!!state.server_unavailable||!state.physical_usb_supported||!!state.active_firing||[1,2].includes(state.state);
  $('mode-label').textContent=physical?'':'SIMULADOR AISLADO';$('mode-label').hidden=physical;
- $('mode-description').hidden=physical;
+ $('mode-description').parentElement.hidden=physical;
  $('simulator-tools').hidden=physical;
  document.querySelectorAll('[data-sim]').forEach(b=>b.disabled=busy||physical);
  if(lastModeGeneration!==null&&lastModeGeneration!==state.mode_generation){$('run-memory').value='';journey={memory:null,step:0,fraction:0,active:null};lastControlMemoryKey=lastMemoryKey=lastTableKey='';}
@@ -98,13 +99,15 @@ function renderState(){
  for(const id of ['pv','sv'])$(id).textContent=online?state[id]:'—';
  const label=online?['PARADO','FUNCIONANDO','PAUSADO'][state.state]:'SIN COMUNICACIÓN';$('state-text').textContent=label;const stateClass=online?({0:'stopped',1:'running',2:'paused'}[state.state]||''):'';
  $('programmer-state').className='metric state-metric '+stateClass;
- $('step').textContent=online?(state.step<=19?`${state.step} / 19`:'C20 · fin'):'—';$('segment-time').textContent=online?`${state.minutes} min`:'—';$('updated').textContent=state.timestamp?'Lectura '+date(state.timestamp):'Esperando sincronización';
+ $('step').textContent=online?(state.step<=19?`${state.step} / 19`:'C20 · fin'):'—';$('updated').textContent=state.timestamp?'Lectura '+date(state.timestamp):'Esperando sincronización';
  $('connection-error').hidden=online;$('connection-error').textContent=state.error||'Esperando respuesta.';
  if(online&&state.state===0&&lastState!==null&&lastState!==0)$('run-memory').value='';
  if(online)lastState=state.state;
  const armed=['1','2','3','4'].includes($('run-memory').value);
  const scheduled=state.scheduled_start;
- $('start-at').disabled=busy||!online||state.state!==0||!!scheduled;
+ const scheduleLocked=busy||!online||state.state!==0||!!scheduled;
+ $('start-date').disabled=scheduleLocked;
+ $('start-hour').disabled=$('start-minute').disabled=scheduleLocked||!$('start-date').value;
  $('scheduled-start').hidden=!scheduled;
  $('cancel-start').disabled=busy||!!state.server_unavailable;
  if(scheduled){
@@ -116,17 +119,46 @@ function renderState(){
  $('control-memories').hidden=[1,2].includes(state.state);$('memory-choice-help').hidden=[1,2].includes(state.state);
  $('selected-memory').textContent=!online?'Memoria sin confirmar': [1,2].includes(state.state)?`Memoria activa: ${state.memory}`:armed?`Memoria ${$('run-memory').value} seleccionada`:'Elige una memoria en las tarjetas.';
  const selectedSource=state.memories?.[$('run-memory').value];const selectedMatches=selectedSource?matches(selectedSource):[];if(online&&state.state===0&&armed&&selectedMatches.length)$('selected-memory').textContent+=' · '+selectedMatches.map(p=>p.name).join(' / ');
- renderMemories();renderProgram();
+ renderMemories();renderProgram();renderSegmentTime();
  const readings=state.recent||[],first=readings.length?new Date(readings[0].timestamp).getTime():0;
  drawChart($('live-chart'),[{color:colors[0],points:readings.map(r=>[(new Date(r.timestamp)-first)/60000,r.pv])},{color:colors[1],dashed:true,points:readings.map(r=>[(new Date(r.timestamp)-first)/60000,r.sv])}],{axis:'tiempo real'});
  if(!$('editor-view').hidden)refreshEditorPV();
  document.querySelectorAll('[data-profile-action="load"]').forEach(b=>b.disabled=busy||!online||state.state!==0);
  updatePhysicalBadges();
 }
+function renderSegmentTime(){
+ const {online,state:runState,active_firing,memory,step,minutes,mode_generation}=state;
+ const total=step>=1&&step<=19?state.memories?.[memory]?.[step-1]?.minutes:null;
+ const progress=$('segment-progress'),caption=$('segment-percentage');
+ if(!online||![1,2].includes(runState)||!Number.isInteger(minutes)||minutes<0||total==null){
+  segmentClock=null;
+  $('segment-time').textContent='—';
+  progress.value=0;
+  progress.setAttribute('aria-valuetext','Sin tramo activo');
+  caption.hidden=true;
+  return;
+ }
+ // El registro del programador aporta minutos enteros. Los segundos se estiman
+ // entre cambios de minuto y se congelan cuando se observa una pausa.
+ const key=[mode_generation,active_firing,memory,step,minutes].join(':');
+ const now=performance.now();
+ if(segmentClock?.key!==key)segmentClock={key,runState,since:now,elapsed:0};
+ const clock=segmentClock;
+ if(clock.runState!==runState){
+  if(runState===2)clock.elapsed+=now-clock.since;
+  else clock.since=now;
+  clock.runState=runState;
+ }
+ const seconds=Math.min(59,Math.floor((clock.elapsed+(runState===1?now-clock.since:0))/1000));
+ $('segment-time').textContent=`${minutes}:${String(seconds).padStart(2,'0')} / ${total>0?total+':00':'—'}`;
+ const percent=total>0?Math.min(100,(minutes*60+seconds)/(total*60)*100):0;
+ progress.value=percent;
+ caption.hidden=total<=0;
+ caption.textContent=`${fmt(percent,0)} % · segundos estimados`;
+ progress.setAttribute('aria-valuetext',total>0?caption.textContent:'Sin duración programada');
+}
 function renderProgram(){
  const active=state.online&&[1,2].includes(state.state);const memory=active?state.memory:Number($('run-memory').value)||state.memory;
- $('segment-duration').hidden=true;
- $('segment-progress').value=0;$('segment-progress').setAttribute('aria-valuetext','Sin tramo activo');
  const source=state.memories?.[memory];if(!source){$('program-chart').innerHTML='<div class="empty">Esperando el programa de las memorias.</div>';$('control-segments').innerHTML='';return;}
  const sameJourney=journey.memory===memory;
  const segments=active||sameJourney?source:previewSegments(source);
@@ -144,10 +176,6 @@ function renderProgram(){
  const key=JSON.stringify([memory,source]);if(key!==lastTableKey){$('control-segments').innerHTML=source.slice(0,19).map((s,i)=>`<tr data-control-step="${i+1}"><td>${i+1}</td><td>${i===0?'C01 · ':''}<span data-control-start="${i}">${fmt(segments[i].temperature,0)}</span> °C</td><td>${s.minutes} min</td><td>${source[i+1].temperature} °C</td></tr>`).join('');lastTableKey=key;}
  const initial=document.querySelector('[data-control-start="0"]');if(initial)initial.textContent=fmt(segments[0].temperature,0);
  document.querySelectorAll('[data-control-step]').forEach(row=>{const n=Number(row.dataset.controlStep);row.classList.toggle('segment-active',active&&n===rawStep);row.classList.toggle('segment-completed',state.online&&journey.memory===memory&&n<journey.step);if(active&&n===rawStep)row.setAttribute('aria-current','step');else row.removeAttribute('aria-current');});
- const programmed=active&&rawStep>=1&&rawStep<=19?source[rawStep-1].minutes:null;
- const percent=programmed>0&&Number.isFinite(state.minutes)?Math.max(0,Math.min(100,state.minutes/programmed*100)):0;$('segment-progress').value=percent;$('segment-progress').setAttribute('aria-valuetext',programmed!==null?fmt(percent,0)+' % del tiempo programado':'Sin tramo activo');
- $('segment-duration').textContent=programmed!==null?`de ${fmt(programmed,0)} min programados · tiempo virtual`:'';
- $('segment-duration').hidden=programmed===null;
  $('segment-target').textContent=active&&rawStep<=19?`Objetivo: ${source[rawStep].temperature} °C`:'Sin tramo activo';
  $('progress-method').textContent=!state.online?'Sin comunicación: el avance no está confirmado.':active?'Avance visual calculado con SV en rampas y CCH en mesetas; no mide la temperatura de la pieza.':'';
 }
@@ -235,13 +263,23 @@ $('mqtt-connection').onclick=()=>$('mqtt-dialog').showModal();
 $('connection-mode').onchange=safe(async()=>{const mode=$('connection-mode').value;try{await command('set_mode',{mode});}finally{await refresh();}});
 $('run-memory').onchange=()=>{renderState();};
 $('control-memories').onclick=safe(async e=>{const b=e.target.closest('[data-preview-memory]');if(b&&!b.disabled){$('run-memory').value=b.dataset.previewMemory;lastControlMemoryKey='';$('control-memories').innerHTML=memoryMarkup(true);renderState();}});
+for(const [id,limit] of [['start-hour',24],['start-minute',60]]){
+ for(let i=0;i<limit;i++){
+  const value=String(i).padStart(2,'0');
+  $(id).add(new Option(value,value));
+ }
+}
+$('start-date').onchange=renderState;
 $('cancel-start').onclick=safe(()=>command('cancel_start'));
-$('run').onclick=safe(async()=>{const memory=Number($('run-memory').value);if(![1,2,3,4].includes(memory))throw Error('Elige explícitamente una memoria antes de iniciar.');const startAt=$('start-at').value;if(startAt){
- const time=new Date(startAt);
+$('run').onclick=safe(async()=>{const memory=Number($('run-memory').value);if(![1,2,3,4].includes(memory))throw Error('Elige explícitamente una memoria antes de iniciar.');const startDate=$('start-date').value;if(startDate){
+ const hour=$('start-hour').value,minute=$('start-minute').value;
+ if(!hour||!minute)throw Error('Selecciona la hora y los minutos.');
+ const time=new Date(`${startDate}T${hour}:${minute}`);
  if(!Number.isFinite(time.getTime())||time.getTime()<=Date.now())throw Error('Elige una fecha y hora futura.');
  if(await confirmAction('Programar memoria '+memory,`El programador iniciará esta memoria el ${date(time)}.`)){
   await command('schedule_start',{memory,start_at:time.toISOString()});
-  $('start-at').value='';
+  for(const id of ['start-date','start-hour','start-minute'])$(id).value='';
+  renderState();
  }
  return;
 }if(await confirmAction('Iniciar desde memoria '+memory,`Se utilizará el programa ya verificado de la memoria ${memory}. C01 se adapta a PV antes de RUN. No se carga un perfil de la biblioteca en esta acción.`))await command('run',{memory});});
@@ -284,4 +322,5 @@ $('auth-form').onsubmit=safe(async e=>{e.preventDefault();token=$('access-token'
 window.addEventListener('beforeunload',e=>{if(dirty||firingDirty){e.preventDefault();e.returnValue='';}});
 window.addEventListener('hashchange',safe(async()=>{const next=location.hash.slice(1);if(['curves','control','history'].includes(next)&&next!==page)await navigate(next);}));
 async function init(){await refresh();try{await loadProfiles();const initial=location.hash.slice(1);if(['curves','history'].includes(initial))await navigate(initial);}catch(e){if(!$('auth-dialog').open)toast(e.message,true);}async function tick(){await refresh();if(page==='history'){try{await loadHistory();await refreshOpenFiring();}catch{}}setTimeout(tick,2000);}setTimeout(tick,2000);}
+setInterval(renderSegmentTime,1000);
 init();

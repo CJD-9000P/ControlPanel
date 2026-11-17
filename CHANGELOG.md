@@ -1,6 +1,15 @@
 # Cambios del producto
 
-## 0.7.5
+## 0.7.7
+
+- Tiempo de tramo transcurrido y total en minutos y segundos, con porcentaje debajo de la barra de progreso. Los segundos transcurridos se estiman entre lecturas del programador.
+- Cabeceras más compactas, versión en el pie derecho y retirada del subtítulo de Mis cocciones.
+
+## 0.7.6 — referencia histórica, sustituida
+
+- El inicio programado usa un calendario y desplegables separados para hora y minutos.
+
+## 0.7.5 — referencia histórica, sustituida
 
 - Control del horno más compacto, con la leyenda debajo de la gráfica de la memoria.
 - Inicio programado de una memoria mediante fecha y hora, confirmación desde Iniciar y cuenta atrás con cancelación. El worker conserva la programación mientras el servicio está en ejecución.
