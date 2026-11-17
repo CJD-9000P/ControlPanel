@@ -37,11 +37,11 @@ function timeScale(maximum){
  const format=v=>seconds<300?fmt(v*60,0)+' s':seconds<7200?fmt(v)+' min':fmt(v/60)+' h';
  return {max,ticks,format};
 }
-function drawChart(target,series,{empty='No hay lecturas disponibles.',markers=[],bands=[],axis='minutos',scale=null,deviation=false,compactWidth=0}={}){
+function drawChart(target,series,{empty='No hay lecturas disponibles.',markers=[],bands=[],axis='minutos',scale=null,deviation=false,plotWidth=0,plotHeight=340}={}){
  const values=series.flatMap(s=>s.points).filter(p=>p.every(Number.isFinite));
  if(!values.length){target.innerHTML=`<div class="empty">${escapeHTML(empty)}</div>`;return;}
- const W=compactWidth||860,H=compactWidth?200:340;
- const L=compactWidth?42:60,R=compactWidth?28:20,T=compactWidth?25:70,B=42;
+ const W=plotWidth||860,H=plotHeight;
+ const L=plotWidth?42:60,R=plotWidth?28:20,T=plotWidth?25:70,B=42;
  const domain=scale||timeScale(Math.max(...values.map(p=>p[0]))),maxX=domain.max;
  const maxRaw=Math.max(...values.map(p=>p[1])),minRaw=Math.min(...values.map(p=>p[1]));
  const step=maxRaw<=50?10:maxRaw<=150?25:maxRaw<=400?50:100;
@@ -173,7 +173,8 @@ function renderProgram(){
  }
  let series=[{color:'#b46d68',points,nodes:true}];
  if(state.online&&journey.memory===memory&&journey.step>0&&points.length>1){const i=Math.min(points.length-2,journey.step-1),from=points[i],to=points[i+1],dot=[from[0]+(to[0]-from[0])*journey.fraction,from[1]+(to[1]-from[1])*journey.fraction];series.push({color:colors[0],points:[...points.slice(0,i+1),dot],dot:colors[1],width:3});}
- drawChart($('program-chart'),series,{axis:'minutos virtuales programados',empty:state.online?'Programa sin tramos con tiempo positivo.':'Vista previa de C01 no disponible sin PV confirmada.'});
+ const chart=$('program-chart');
+ drawChart(chart,series,{plotWidth:chartContentWidth(chart),axis:'minutos virtuales programados',empty:state.online?'Programa sin tramos con tiempo positivo.':'Vista previa de C01 no disponible sin PV confirmada.'});
  const key=JSON.stringify([memory,source]);if(key!==lastTableKey){$('control-segments').innerHTML=source.slice(0,19).map((s,i)=>`<tr data-control-step="${i+1}"><td>${i+1}</td><td>${i===0?'C01 · ':''}<span data-control-start="${i}">${fmt(segments[i].temperature,0)}</span> °C</td><td>${s.minutes} min</td><td>${source[i+1].temperature} °C</td></tr>`).join('');lastTableKey=key;}
  const initial=document.querySelector('[data-control-start="0"]');if(initial)initial.textContent=fmt(segments[0].temperature,0);
  document.querySelectorAll('[data-control-step]').forEach(row=>{const n=Number(row.dataset.controlStep);row.classList.toggle('segment-active',active&&n===rawStep);row.classList.toggle('segment-completed',state.online&&journey.memory===memory&&n<journey.step);if(active&&n===rawStep)row.setAttribute('aria-current','step');else row.removeAttribute('aria-current');});
@@ -194,24 +195,29 @@ async function loadProfiles(){profiles=await api('profiles');renderProfileList()
 function renderProfileList(){const search=$('profile-search').value.toLocaleLowerCase(),filtered=profiles.filter(p=>(p.name+' '+p.notes).toLocaleLowerCase().includes(search));$('profile-count').textContent=`${profiles.length} curvas guardadas`;
  $('profile-list').innerHTML=filtered.length?filtered.map(p=>`<article id="profile-${escapeHTML(p.id)}" class="profile-card" tabindex="-1"><div><h2>${escapeHTML(p.name)}</h2><div class="profile-metrics"><span class="pill">${metrics(p.segments)}</span><span class="pill" data-match-profile="${p.id}"></span></div><p class="profile-description">${escapeHTML(p.notes||'Sin descripción')}</p><p class="profile-meta">Modificada: ${date(p.updated_at)}</p></div><div id="mini-${p.id}" class="chart chart-mini"></div><div class="profile-actions"><button class="button outline" data-profile-action="load" data-id="${p.id}">↑ Cargar</button><button class="button secondary" data-profile-action="edit" data-id="${p.id}">✎ Editar</button><button class="button secondary" data-profile-action="duplicate" data-id="${p.id}">⧉ Duplicar</button><button class="button secondary" data-profile-action="delete" data-id="${p.id}">Eliminar</button></div></article>`).join(''):'<div class="empty"><h2>'+ (profiles.length?'No hay coincidencias':'Todavía no tienes curvas guardadas')+'</h2><p>Crea una curva o copia una memoria del programador.</p></div>';
  drawProfileCharts();updatePhysicalBadges();renderState();}
+function chartContentWidth(chart){
+ if(!chart?.clientWidth)return 0;
+ const style=getComputedStyle(chart);
+ return Math.round(chart.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight));
+}
 function drawProfileCharts(){
- const first=$('profile-list').querySelector('.chart-mini');
- if(!first?.clientWidth)return;
- const style=getComputedStyle(first);
- const compactWidth=Math.round(first.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight));
+ const plotWidth=chartContentWidth($('profile-list').querySelector('.chart-mini'));
+ if(!plotWidth)return;
  for(const p of profiles){
   const chart=$('mini-'+p.id);
   if(chart)drawChart(chart,[{color:colors[0],points:curvePoints(previewSegments(p.segments)),nodes:true}],
-   {axis:'C01 = PV al cargar / iniciar',compactWidth});
+   {axis:'C01 = PV al cargar / iniciar',plotWidth,plotHeight:200});
  }
 }
-let previousProfileListWidth=0;
-new ResizeObserver(([entry])=>{
- const width=entry.contentRect.width;
- if(width===previousProfileListWidth)return;
- previousProfileListWidth=width;
- if(width)drawProfileCharts();
-}).observe($('profile-list'));
+for(const [id,render] of [['profile-list',drawProfileCharts],['program-chart',renderProgram]]){
+ let previousWidth=0;
+ new ResizeObserver(([entry])=>{
+  const width=entry.contentRect.width;
+  if(width===previousWidth)return;
+  previousWidth=width;
+  if(width)render();
+ }).observe($(id));
+}
 async function editProfile(p,ident=null){if(dirty&&!await confirmAction('¿Cambiar de curva?','Los cambios sin guardar se perderán.'))return;selected=ident;draft=structuredClone(p);dirty=false;$('curves-list-view').hidden=true;$('editor-view').hidden=false;$('editor-title').textContent=ident?'Editar curva':'Nueva curva';$('profile-name').value=p.name;$('profile-notes').value=p.notes||'';$('export-profile').disabled=!ident;
  $('segments').innerHTML=p.segments.slice(0,19).map((s,i)=>`<tr><td>${i+1}</td><td>${i===0?'<strong class="initial-pv" id="initial-pv">PV · —</strong>':`<span data-start="${i}">${s.temperature}</span> °C`}</td><td><input type="number" min="0" max="32767" step="1" required value="${s.minutes}" data-minutes="${i}" aria-label="Duración del tramo ${i+1}"></td><td><input type="number" min="0" max="1200" step="1" required value="${p.segments[i+1].temperature}" data-temperature="${i+1}" aria-label="Temperatura final C${i+2}"></td></tr>`).join('');refreshEditorPV();$('profile-name').focus();}
 function formProfile(){const fallback=draft?.segments?.[0]?.temperature??0;return{name:$('profile-name').value,notes:$('profile-notes').value,segments:Array.from({length:20},(_,i)=>({temperature:i?Number(document.querySelector(`[data-temperature="${i}"]`).value):state.online?state.pv:fallback,minutes:i<19?Number(document.querySelector(`[data-minutes="${i}"]`).value):0}))};}

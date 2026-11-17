@@ -1,6 +1,11 @@
 # Cambios del producto
 
-## 0.7.8
+## 0.7.9
+
+- Botones más anchos en Mis curvas, con dos por fila.
+- La gráfica del programa en Control del horno se ajusta al ancho disponible de su marco y se retira el aviso de importación de Mis cocciones.
+
+## 0.7.8 — referencia histórica, sustituida
 
 - Los botones de Mis curvas se distribuyen en dos filas y las gráficas se ajustan al ancho disponible de su marco.
 - Se retira el rótulo CJD-9000P de la cabecera de Mis cocciones.
