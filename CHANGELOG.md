@@ -1,6 +1,11 @@
 # Cambios del producto
 
-## 0.7.7
+## 0.7.8
+
+- Los botones de Mis curvas se distribuyen en dos filas y las gráficas se ajustan al ancho disponible de su marco.
+- Se retira el rótulo CJD-9000P de la cabecera de Mis cocciones.
+
+## 0.7.7 — referencia histórica, sustituida
 
 - Tiempo de tramo transcurrido y total en minutos y segundos, con porcentaje debajo de la barra de progreso. Los segundos transcurridos se estiman entre lecturas del programador.
 - Cabeceras más compactas, versión en el pie derecho y retirada del subtítulo de Mis cocciones.
