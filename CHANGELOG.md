@@ -1,6 +1,12 @@
 # Cambios del producto
 
-## 0.7.2
+## 0.7.3
+
+- Seguimiento de la cocción más compacto, con barra de progreso del tramo y puntos de referencia en la gráfica.
+- Las memorias en Mis curvas llevan al perfil coincidente o permiten crear uno a partir de su contenido.
+- La selección de memoria en Control muestra los perfiles coincidentes y la interfaz distingue los avisos del simulador.
+
+## 0.7.2 — referencia histórica, sustituida
 
 - Lanzador descargable bin/instalar-cjd.sh: comprueba Linux, distribución, usuario normal, curl/tar/mktemp y Python >=3.11 con SQLite/SSL/venv; ofrece paquetes base y abre el asistente de la misma versión.
 - Generación automática durante empaquetado solo cuando cambia la versión fuente; conserva contenido y fecha si no cambia. Descarga por HTTPS desde la rama de versión y comprueba la versión del archivo antes de iniciar el asistente.
