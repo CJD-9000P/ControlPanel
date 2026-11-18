@@ -27,6 +27,7 @@ class Worker:
         self.command_adapter_epoch = None
         self.queue = queue.Queue(maxsize=32)
         self.stop_event = threading.Event()
+        self.update_until = 0
         self.lock = threading.RLock()
         self.state = {"online": False, "mode": self.mode, "error": "Conectando con el programador…"}
         self.memories = {}
@@ -75,6 +76,11 @@ class Worker:
                           port=getattr(self.adapter, 'port', None),
                           configured_port=self.selected_port or self.default_port,
                           serial_ports=self.serial_ports() if self.serial_ports else [])
+            pending = time.monotonic() < self.update_until
+            result.update(update_pending=pending, update_idle=(
+                result['online'] and result.get('state') == 0 and self.active is None
+                and self.scheduled is None and not pending
+            ))
             return result
 
     def _run(self):
@@ -332,6 +338,24 @@ class Worker:
         return {'message': 'Simulador activado.' if mode=='simulator' else 'Modo físico seleccionado; consulta el estado de MODBUS.', 'state': self.snapshot()}
 
     def _execute(self, operation, data, *, origin="app", deadline=None, guard=None, scheduled=None):
+        if operation == 'prepare_update':
+            launch = data.get('launch')
+            if not callable(launch) or not self.snapshot()['update_idle']:
+                raise ValueError('El programador debe estar parado y comunicado, sin una cocción programada.')
+            self._poll()
+            if not self.snapshot()['update_idle']:
+                raise ValueError('El programador ya no está disponible para actualizar.')
+            with self.lock:
+                self.update_until = time.monotonic() + 120
+            try:
+                launch()
+            except Exception:
+                with self.lock:
+                    self.update_until = 0
+                raise
+            return None
+        if time.monotonic() < self.update_until and operation not in ('read', 'stop'):
+            raise ValueError('Actualización del programa en curso.')
         if operation == 'cancel_start':
             self._cancel_start("Cocción programada cancelada desde el panel.")
             return {"message": "Programación cancelada.", "state": self.snapshot()}

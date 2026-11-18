@@ -27,21 +27,18 @@
 .state-metric.stopped{background:#442521;border-color:#a4574d;color:#ffaaa2}.state-metric.stopped strong{color:#ffaaa2}
 
 /* Cabecera compartida: indicadores RTU/MQTT juntos, contenido a todo el ancho. */
-.connection-statuses{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-left:auto}
+.connection-statuses{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;margin-left:auto;max-width:100%}
 .connection-statuses .connection{margin:0;min-height:44px;background:transparent;color:var(--ink)}
 .connection-statuses .connection.online{border-color:#33764b;background:var(--green-dark);color:#8ee0a9}.connection-statuses .connection.offline{border-color:#a4574d;background:#442521;color:#ffaaa2}
 .connection-details{display:grid;grid-template-columns:1fr 1.4fr;gap:10px;font-size:12px}.connection-details dt{color:var(--muted)}.connection-details dd{margin:0;overflow-wrap:anywhere}
-@media(max-width:750px){.connection-statuses{gap:6px;flex:1;min-width:0}.connection-statuses .connection{font-size:10px;padding:7px 9px}.connection-details{grid-template-columns:1fr}.connection-details dd{margin-bottom:8px}}
+@media(max-width:750px){.connection-statuses{flex:1;min-width:0}.connection-details{grid-template-columns:1fr}.connection-details dd{margin-bottom:8px}}
 
 /* Indicadores recuperados de la tarjeta antigua de Control. */
-.connection-statuses .connection{min-width:152px;justify-content:center;text-align:center;font-size:12px;font-weight:700;border-radius:11px;padding:10px 15px;border:1px solid transparent;color:var(--ink)}
+.connection-statuses .connection{justify-content:center;text-align:center;font-size:10px;font-weight:700;border-radius:11px;gap:5px;padding:7px 8px;border:1px solid transparent;color:var(--ink)}
 .connection-statuses .connection.online{background:rgba(41,188,108,.18);border-color:rgba(41,188,108,.50);color:var(--ink)}
 .connection-statuses .connection.online:before{background:#29bc6c}.connection-statuses .connection.offline{background:rgba(195,64,64,.14);border-color:rgba(195,64,64,.40);color:var(--ink)}.connection-statuses .connection.offline:before{background:#cc4242}
-@media(max-width:750px){.connection-statuses .connection{min-width:135px;font-size:11px;padding:10px}.connection-selector{font-size:11px}}
-
-.connection-selector{display:flex;align-items:center;gap:8px;margin:0;min-height:44px;font-size:12px;white-space:nowrap}
-.connection-selector select{min-width:185px;max-width:100%;border-radius:11px;padding:9px 12px;min-height:44px}.connection-selector:has(select:disabled){color:var(--muted)}
-@media(max-width:750px){.connection-selector{flex:1;justify-content:flex-end}.connection-selector select{min-width:170px;width:auto}}
+.connection-selector{display:flex;align-items:center;gap:5px;margin:0;min-height:44px;font-size:11px;white-space:nowrap}
+.connection-selector select{width:auto;border-radius:11px;padding:8px;min-height:44px}.connection-selector:has(select:disabled){color:var(--muted)}
 
 /* Control: mandos y seguimiento compactos; conserva botones táctiles. */
 #page-control .controls,#page-control .tracking{margin:12px 0}

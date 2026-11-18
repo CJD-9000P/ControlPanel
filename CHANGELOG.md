@@ -1,6 +1,14 @@
 # Cambios del producto
 
-## 0.7.10
+## 0.7.12
+
+- Barra superior más compacta y etiquetas cortas en el selector USB, con la ruta estable conservada para la conexión.
+
+## 0.7.11 — referencia histórica, sustituida
+
+- Botón Actualizar programa en la barra superior cuando hay una versión nueva y el programador está parado, comunicado y sin una cocción programada.
+
+## 0.7.10 — referencia histórica, sustituida
 
 - El desplegable Conexión detecta los puertos USB del equipo y guarda el puerto elegido para el programador.
 

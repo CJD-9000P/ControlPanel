@@ -8,6 +8,7 @@ const states={running:'En curso',paused:'Pausada',ended:'Finalizada',interrupted
 const colors=['#11a77c','#d97706','#8b5cf6','#2386e2','#cf4779','#778b17','#a46a39'];
 let state={},profiles=[],selected=null,draft=null,dirty=false,firingDirty=false,busy=false,page='control';
 let firings=[],selectedFirings=new Set(),details=[],detailID=null,loadProfileID=null,importType=null,token=sessionStorage.getItem('cjd-token')||'';
+let requestedUpdate=null,lastUpdateError=null;
 let pointerDown=false;
 window.addEventListener('pointerdown',()=>{pointerDown=true;},{passive:true});
 window.addEventListener('pointerup',()=>{setTimeout(()=>{pointerDown=false;},0);},{passive:true});
@@ -83,6 +84,20 @@ function renderState(){
  $('mqtt-detail-broker').textContent=mqtt.enabled?`${mqtt.host}:${mqtt.port}`:'—';
  $('mqtt-detail-prefix').textContent=mqtt.topic_prefix||'—';
  $('mqtt-detail-pending').textContent=state.server_unavailable?'Sin confirmar':Number.isInteger(mqtt.history_pending)?String(mqtt.history_pending):'—';
+ const update=state.update||{};
+ $('update-program').hidden=!update.version||!state.update_idle||!!state.server_unavailable||!!requestedUpdate;
+ $('update-program').disabled=busy;
+ if(update.error&&update.error!==lastUpdateError){
+  lastUpdateError=update.error;
+  requestedUpdate=null;
+  toast(update.error,true);
+ }
+ if(!update.error)lastUpdateError=null;
+ if(requestedUpdate&&state.version===requestedUpdate&&!state.server_unavailable){
+  requestedUpdate=null;
+  if(!dirty&&!firingDirty)location.reload();
+  else toast('Programa actualizado. Guarda tus cambios y recarga el panel.');
+ }
  const physical=state.mode==='physical';
  $('connection').textContent=online?'MODBUS · Conectado':state.server_unavailable?'MODBUS · Desconocido':state.communication_status==='connecting'?'MODBUS · Conectando':'MODBUS · Desconectado';
  $('connection').className='connection '+(online?'online':state.communication_status==='connecting'?'pending':'offline');
@@ -93,11 +108,17 @@ function renderState(){
  const fallbackPort=selectedPort||(!detectedPorts.length&&state.configured_port);
  const ports=[...new Set([...detectedPorts,...(fallbackPort?[fallbackPort]:[])])];
  if(JSON.stringify(ports)!==connectionMode.dataset.ports){
-  const options=ports.map(port=>new Option('USB · '+port,port));
+  const options=ports.map((port,index)=>{
+   const label=/^\/dev\/tty(?:USB|ACM)\d+$/.test(port)?port:`USB ${index+1}`;
+   const option=new Option(label,port);
+   option.title=port;
+   return option;
+  });
   connectionMode.replaceChildren(new Option('Simulador','simulator'),...options);
   connectionMode.dataset.ports=JSON.stringify(ports);
  }
  connectionMode.value=selectedPort||'simulator';
+ connectionMode.title=selectedPort||'Seleccionar conexión';
  connectionMode.disabled=busy||!!state.server_unavailable||!state.physical_usb_supported||!!state.active_firing||[1,2].includes(state.state);
  $('mode-label').textContent=physical?'':'SIMULADOR AISLADO';$('mode-label').hidden=physical;
  $('mode-description').parentElement.hidden=physical;
@@ -294,6 +315,19 @@ async function refreshOpenFiring(){if($('history-detail').hidden||!details.some(
 for(const b of document.querySelectorAll('[data-page]'))b.onclick=safe(()=>navigate(b.dataset.page));
 document.querySelector('.brand').onclick=safe(async e=>{e.preventDefault();await navigate('control');});
 $('mqtt-connection').onclick=()=>$('mqtt-dialog').showModal();
+$('update-program').onclick=safe(async()=>{
+ const version=state.update?.version;
+ if(!version||!await confirmAction('Actualizar programa',`Se instalará la versión ${version} y el panel se reiniciará. Guarda antes cualquier cambio pendiente.`))return;
+ requestedUpdate=version;
+ lastUpdateError=null;
+ try{
+  const result=await api('update',{method:'POST',body:{version}});
+  toast(result.message);
+ }catch(error){
+  requestedUpdate=null;
+  throw error;
+ }finally{await refresh();}
+});
 $('connection-mode').onchange=safe(async()=>{const choice=$('connection-mode').value;const selection=choice==='simulator'?{mode:'simulator'}:{mode:'physical',port:choice};try{await command('set_mode',selection);}finally{await refresh();}});
 $('run-memory').onchange=()=>{renderState();};
 $('control-memories').onclick=safe(async e=>{const b=e.target.closest('[data-preview-memory]');if(b&&!b.disabled){$('run-memory').value=b.dataset.previewMemory;lastControlMemoryKey='';$('control-memories').innerHTML=memoryMarkup(true);renderState();}});

@@ -14,6 +14,8 @@ El modo local base no necesita paquetes de terceros. `requirements.txt` document
 | tarfile / hashlib | Incluidos en Python 3.13.5 probado | Paquete de fuentes y manifiesto SHA-256 | Empaquetado offline |
 | systemd / systemctl / loginctl / systemd-analyze | 257 (257.13-1~deb13u1) | Servicio de usuario, arranque con linger y validación de unidad | Operación/instalación; Debian 13.7 actual; otras distribuciones pendientes |
 
+| systemd-run | Versión del sistema, pendiente de comprobar en el PC del horno | Lanza la actualización web en una unidad de usuario separada | Ejecución opcional; Linux con servicio de usuario systemd |
+
 Los módulos estándar no tienen versiones independientes del runtime Python. El modo local no usa Node, npm, CDN ni framework externo; MQTT/HA son opcionales. No hay servidor SQLite separado. Las plataformas objetivo Ubuntu/Fedora y ARM64 no se presentan como probadas.
 
 ## Herramientas del LXC comprobadas

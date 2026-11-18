@@ -59,3 +59,10 @@ Usa tu usuario normal, sin sudo. Evita `curl | sh`: el asistente necesita conser
 Descarga el código de su propia rama `version/VERSION`, comprueba la versión sin ejecutar el Python descargado y abre el asistente. Los temporales se conservan para diagnóstico. No ejecuta el panel, no modifica credenciales ni conecta al horno antes de las opciones y confirmaciones del asistente. Si falta la publicación de esa versión o falla la descarga, no instala. HTTPS y comprobación de versión no equivalen a una firma criptográfica del paquete.
 
 `python3 packaging/generate_launcher.py` genera el archivo en `bin` a partir de `packaging/instalar-cjd.sh.in`. `python3 packaging/build.py` lo llama automáticamente. La versión sale exclusivamente de `cjd_panel/__init__.py`: si coincide con la del archivo generado, no lo reescribe ni cambia su fecha, aunque cambie la plantilla. Para publicar cambios del lanzador hay que incrementar la versión. El flujo de publicación debe subir el código y crear su rama de versión antes de anunciar el comando de instalación.
+
+
+## Actualizar desde el panel
+
+Con el servicio de usuario instalado, **Actualizar programa** aparece en la barra superior cuando el panel detecta una versión nueva y confirma que el programador está parado, comunicado y sin una cocción programada. La consulta de versiones necesita Internet en el PC del panel. Desde otro equipo de la red, la actualización requiere acceso web autenticado.
+
+Al confirmar, el servicio descarga el código publicado, vuelve a comprobar el estado del programador y guarda una copia de SQLite en el directorio de datos. Después reinicia el panel y comprueba la versión instalada. Si la versión requiere cambiar dependencias o el panel se ejecuta manualmente, usa el instalador de terminal. Los errores de aplicación se registran en `journalctl --user -u cjd-panel-update.service`.

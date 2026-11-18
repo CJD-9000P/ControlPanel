@@ -15,6 +15,7 @@ from .serial_adapter import PhysicalRTU, SerialConfig, available_serial_ports
 from .store import Store
 from .worker import Worker
 from .server import Application, serve
+from .updater import ProgramUpdater
 
 
 def main():
@@ -87,13 +88,14 @@ def main():
                         adapter_factory=adapter_factory, settings_path=settings_path,
                         serial_ports=available_serial_ports, selected_port=selected_port,
                         default_port=serial_config.port)
+        updater = ProgramUpdater.for_service(base, args.data_dir.resolve(), args.port, worker)
         bridge = None
         try:
             if mqtt_config:
                 from .mqtt_bridge import MQTTBridge
                 bridge = MQTTBridge(worker, store, mqtt_config, args.data_dir/'mqtt-commands.sqlite3')
             try:
-                server = serve(Application(worker, store, token, args.host, bridge, auth_record), args.host, args.port)
+                server = serve(Application(worker, store, token, args.host, bridge, auth_record, updater), args.host, args.port)
             except OSError as exc:
                 parser.exit(1, f"No se puede abrir el servidor local: {exc}\n")
             worker.start()

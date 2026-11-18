@@ -4,6 +4,7 @@ import csv
 from datetime import datetime, timezone
 import hmac
 import io
+from ipaddress import ip_address
 import json
 import mimetypes
 from pathlib import Path
@@ -31,9 +32,10 @@ def csv_bytes(fields, rows):
 
 
 class Application:
-    def __init__(self, worker, store, token=None, host="127.0.0.1", mqtt_bridge=None, password_record=None):
+    def __init__(self, worker, store, token=None, host="127.0.0.1", mqtt_bridge=None, password_record=None, updater=None):
         self.worker, self.store, self.token, self.host = worker, store, token, host
         self.mqtt_bridge = mqtt_bridge
+        self.updater = updater
         self.password_verifier = PasswordVerifier(password_record) if password_record else None
 
     def __call__(self, env, start_response):
@@ -111,9 +113,24 @@ class Application:
                 else:
                     data = raw.decode("utf-8-sig")
         parts = path.strip("/").split("/")
+        updates_allowed = self.updater and (
+            self.token or self.password_verifier or (
+                request_host in ('127.0.0.1', 'localhost')
+                and ip_address(env.get('REMOTE_ADDR') or '0.0.0.0').is_loopback
+            )
+        )
         if path == "/api/state" and method == "GET":
-            return self.json({**self.worker.snapshot(), "version": __version__,
+            state = self.worker.snapshot()
+            return self.json({**state, "version": __version__,
+                "update": self.updater.snapshot(state) if updates_allowed else {},
                 "mqtt": self.mqtt_bridge.snapshot() if self.mqtt_bridge else {"enabled": False, "connected": False}})
+        if path == "/api/update" and method == "POST":
+            if not updates_allowed:
+                return self.error(403, 'La actualización requiere el servicio instalado y acceso local o autenticado.')
+            if not isinstance(data, dict):
+                raise ValueError('Se esperaba una versión publicada.')
+            self.updater.start(data.get('version'))
+            return self.json({'message': 'Preparando la actualización del programa.'})
         if path == "/api/events" and method == "GET":
             return self.json(self.store.events())
         if path == "/api/profiles":
