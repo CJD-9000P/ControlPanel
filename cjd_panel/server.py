@@ -21,6 +21,7 @@ from .modbus import CommunicationError
 STATIC = Path(__file__).parent / "static"
 MAX_BODY = 32 * 1024 * 1024
 CSV_FIELDS = ["timestamp", "pv", "sv", "state", "step", "minutes", "memory"]
+LEGACY_FIRING_FIELDS = {"fecha", "hora", "PV", "SV", "segmento", "estado", "tiempo_CJD"}
 
 
 def csv_bytes(fields, rows):
@@ -201,12 +202,21 @@ class Application:
         raise KeyError("Recurso o método no encontrado.")
 
     def import_firing(self, text):
+        text = text.removeprefix("\ufeff")
         reader = csv.DictReader(io.StringIO(text))
-        if not reader.fieldnames or not set(CSV_FIELDS).issubset(reader.fieldnames):
-            raise ValueError("CSV no compatible. Usa el formato exportado por esta aplicación; los históricos antiguos necesitan su adaptador.")
+        legacy = not set(CSV_FIELDS).issubset(reader.fieldnames or ())
+        if legacy:
+            reader = csv.DictReader(io.StringIO(text), delimiter=";")
+            if not LEGACY_FIRING_FIELDS.issubset(reader.fieldnames or ()):
+                raise ValueError("CSV no compatible. Usa un histórico del comunicador CJD o un CSV exportado por el panel.")
         rows = []
         previous = None
         for r in reader:
+            if legacy:
+                stamp = r.get("timestamp_utc") or datetime.fromisoformat(
+                    f'{r["fecha"]}T{r["hora"]}').astimezone().isoformat()
+                r = {"timestamp": stamp, "pv": r["PV"], "sv": r["SV"], "state": r["estado"],
+                     "step": r["segmento"], "minutes": r["tiempo_CJD"], "memory": "0"}
             stamp = datetime.fromisoformat(r["timestamp"])
             if stamp.tzinfo is None:
                 raise ValueError("Las fechas CSV deben incluir zona horaria.")
@@ -218,8 +228,9 @@ class Application:
             if not (-32768 <= pv <= 32767 and -32768 <= sv <= 32767):
                 raise ValueError("Temperaturas CSV inválidas.")
             rows.append((stamp, pv, sv, integer(int(r["state"]), "Estado",0,2),
-                         integer(int(r["step"]), "Segmento",1,20), integer(int(r["minutes"]), "Tiempo",0,32767),
-                         integer(int(r["memory"]), "Memoria",1,4)))
+                         integer(int(r["step"]), "Segmento",0 if r["memory"] == "0" else 1,20),
+                         integer(int(r["minutes"]), "Tiempo",0,32767),
+                         integer(int(r["memory"]), "Memoria",0,4)))
         if not rows:
             raise ValueError("CSV vacío.")
         ident = uuid.uuid4().hex

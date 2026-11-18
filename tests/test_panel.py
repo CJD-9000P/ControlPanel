@@ -80,6 +80,21 @@ class PanelTest(unittest.TestCase):
         rows=self.store.firing(imported['json']['id'])['readings']
         self.assertEqual([r['pv'] for r in rows],[r['pv'] for r in detail['readings']])
 
+    def test_import_legacy_firing_with_and_without_utc(self):
+        header = "fecha;hora;PV;SV;segmento;estado;estado_texto;tiempo_CJD"
+        row = "2026-01-02;15:00:00;70;75;0;0;PARADO;2"
+        for suffix, values in (("", ""), (";timestamp_utc", ";2026-01-02T14:00:00+00:00")):
+            with self.subTest(utc=bool(suffix)):
+                result = self.request('firings/import', 'POST', f'\ufeff{header}{suffix}\n{row}{values}\n')
+                self.assertEqual(result['status'], 201)
+                ident = result['json']['id']
+                reading = self.store.firing(ident)['readings'][0]
+                self.assertEqual((reading['pv'], reading['step'], reading['memory']), (70, 0, 0))
+                if suffix:
+                    self.assertEqual(reading['timestamp'], "2026-01-02T14:00:00.000+00:00")
+                exported = self.request(f'firings/{ident}/csv')['body'].decode('utf-8-sig')
+                self.assertEqual(self.request('firings/import', 'POST', exported)['status'], 201)
+
     def test_scheduled_start_and_cancellation(self):
         saved = self.store.save_profile(sample())
         self.order('load', memory=3, profile_id=saved['id'])

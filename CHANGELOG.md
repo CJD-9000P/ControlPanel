@@ -1,6 +1,11 @@
 # Cambios del producto
 
-## 0.7.12
+## 0.7.13
+
+- Sondeo Modbus habitual de cuatro consultas cuando está disponible la lectura en bloque.
+- Importación de los CSV de cocciones del comunicador original, con y sin columna UTC.
+
+## 0.7.12 — referencia histórica, sustituida
 
 - Barra superior más compacta y etiquetas cortas en el selector USB, con la ruta estable conservada para la conexión.
 

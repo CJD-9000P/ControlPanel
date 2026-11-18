@@ -89,7 +89,7 @@ class Worker:
             while not self.stop_event.is_set():
                 if time.monotonic() >= next_poll:
                     try:
-                        self._poll()
+                        self._poll(refresh_memories=False)
                     except Exception as exc:
                         self._offline(exc)
                     next_poll = time.monotonic() + self.interval
@@ -141,7 +141,7 @@ class Worker:
         values = self.adapter.read(MEMORIES[memory], 40)
         return [{"temperature": values[i], "minutes": values[i+1]} for i in range(0, 40, 2)]
 
-    def _poll(self, origin="observed", name=None):
+    def _poll(self, origin="observed", name=None, *, refresh_memories=True):
         v = self.adapter.read(0xC9, 6)
         memory = self.adapter.read(0xA0)[0]
         cyc = self.adapter.read(0xA1)[0]
@@ -150,17 +150,24 @@ class Worker:
             raise CommunicationError("Estado, segmento, memoria o dP no compatibles; se bloquea el control.")
         s = {"online": True, "mode": self.mode, "timestamp": utcnow(), "pv": v[4], "sv": v[5],
              "step": v[0], "state": v[1], "minutes": v[3], "memory": memory, "cyc": cyc, "dp": dp, "error": None}
-        # Releer memorias en cada sincronización mantiene visibles cambios externos.
-        memories = {i: self._memory(i) for i in MEMORIES}
-        # No publicar el bloque dinámico antiguo si el estado cambió al leer memorias.
-        latest = self.adapter.read(0xC9, 6)
-        latest_memory = self.adapter.read(0xA0)[0]
-        latest_dp = self.adapter.read(0xA3)[0]
-        if (latest[1] not in (0, 1, 2) or not 1 <= latest[0] <= 20
-                or latest_memory != memory or latest_dp != 0):
-            raise CommunicationError('Estado o memoria cambiaron durante la sincronización; esperando nueva lectura.')
-        s.update(timestamp=utcnow(), pv=latest[4], sv=latest[5], step=latest[0],
-                 state=latest[1], minutes=latest[3])
+        memories = self.memories.copy()
+        if refresh_memories or not self.state.get("online"):
+            to_read = MEMORIES
+        elif memory != self.state.get("memory") or (s["state"] in (1, 2) and not self.active):
+            to_read = (memory,)
+        else:
+            to_read = ()
+        if to_read:
+            memories.update((i, self._memory(i)) for i in to_read)
+            # Confirmar el estado y la selección tras leer las curvas.
+            latest = self.adapter.read(0xC9, 6)
+            latest_memory = self.adapter.read(0xA0)[0]
+            latest_dp = self.adapter.read(0xA3)[0]
+            if (latest[1] not in (0, 1, 2) or not 1 <= latest[0] <= 20
+                    or latest_memory != memory or latest_dp != 0):
+                raise CommunicationError('Estado o memoria cambiaron durante la sincronización; esperando nueva lectura.')
+            s.update(timestamp=utcnow(), pv=latest[4], sv=latest[5], step=latest[0],
+                     state=latest[1], minutes=latest[3])
         if not self.state.get("online"):
             self.store.event("online", "observed", "Comunicación y cuatro memorias sincronizadas.", self.active)
         with self.lock:
