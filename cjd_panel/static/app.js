@@ -31,10 +31,12 @@ async function api(path,options={}){
 async function download(path,name){const blob=await api(path,{download:true});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 async function confirmAction(title,message){const dialog=$('confirm-dialog');if(dialog.open)return false;$('confirm-title').textContent=title;$('confirm-message').textContent=message;dialog.returnValue='cancel';dialog.showModal();return new Promise(resolve=>dialog.addEventListener('close',()=>resolve(dialog.returnValue==='confirm'),{once:true}));}
 function timeScale(maximum){
- const seconds=Math.max(1,maximum*60),steps=[1,2,5,10,15,20,30,60,120,300,600,900,1800,3600,7200,14400,21600,43200,86400];
+ const max=maximum>0?maximum:1/60;
+ const seconds=max*60,steps=[1,2,5,10,15,20,30,60,120,300,600,900,1800,3600,7200,14400,21600,43200,86400];
  const step=steps.find(v=>v>=seconds/5)||Math.ceil(seconds/5/86400)*86400;
- const count=Math.ceil(seconds/step),max=count*step/60;
- const ticks=Array.from({length:count+1},(_,i)=>i*step/60);
+ const ticks=[0];
+ for(let tick=step;tick<=seconds-step/2;tick+=step)ticks.push(tick/60);
+ ticks.push(max);
  const format=v=>seconds<300?fmt(v*60,0)+' s':seconds<7200?fmt(v)+' min':fmt(v/60)+' h';
  return {max,ticks,format};
 }
@@ -52,7 +54,7 @@ function drawChart(target,series,{empty='No hay lecturas disponibles.',markers=[
  let svg=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${deviation?'Desviación registrada PV menos SV':'Temperatura'} en grados Celsius frente a tiempo" data-time-max="${maxX}"><text x="8" y="16" fill="#a0aaa5" font-size="11">${deviation?'PV − SV · °C':'°C'}</text>`;
  for(const band of bands){const start=Math.max(0,Math.min(maxX,band.start)),end=Math.max(0,Math.min(maxX,band.end));if(end>start)svg+=`<rect x="${x(start)}" y="${T}" width="${x(end)-x(start)}" height="${H-B-T}" fill="${band.kind==='pause'?'#60a5fa':'#a0aaa5'}" opacity=".13"><title>${escapeHTML(band.label)}</title></rect>`;}
  for(let i=0;i<=4;i++){const v=minY+(maxY-minY)*i/4;svg+=`<line x1="${L}" y1="${y(v)}" x2="${W-R}" y2="${y(v)}" stroke="${deviation&&v===0?'#c4d0c8':'#343a37'}" stroke-dasharray="3 5"/><text x="${L-10}" y="${y(v)+4}" text-anchor="end" font-size="11" fill="#a0aaa5">${fmt(v)}</text>`;}
- for(const v of domain.ticks)svg+=`<text x="${x(v)}" y="${H-16}" text-anchor="middle" fill="#a0aaa5" font-size="11">${domain.format(v)}</text>`;
+ for(const v of domain.ticks)svg+=`<text x="${x(v)}" y="${H-16}" text-anchor="${v===maxX?'end':'middle'}" fill="#a0aaa5" font-size="11">${domain.format(v)}</text>`;
  for(const [i,m] of markers.entries()){if(!Number.isFinite(m.minute)||m.minute<0||m.minute>maxX)continue;const lane=28+(i%3)*14;svg+=`<line x1="${x(m.minute)}" y1="${T}" x2="${x(m.minute)}" y2="${H-B}" stroke="${m.color}" stroke-dasharray="4 5" opacity=".5"><title>${escapeHTML(m.label)}</title></line>${m.tag?`<text x="${Math.min(W-R-25,x(m.minute)+3)}" y="${lane}" fill="${m.color}" font-size="11">${escapeHTML(m.tag)}<title>${escapeHTML(m.label)}</title></text>`:`<circle cx="${x(m.minute)}" cy="${lane}" r="4" fill="${m.color}"><title>${escapeHTML(m.label)}</title></circle>`}`;}
  for(const s of series){let runs=[],run=[];for(const p of s.points){if(p.every(Number.isFinite))run.push(p);else if(run.length){runs.push(run);run=[];}}if(run.length)runs.push(run);
  for(const points of runs){if(s.nodes)svg+=points.map((p,i)=>`<circle cx="${x(p[0])}" cy="${y(p[1])}" r="4" fill="${s.color}" stroke="#151718" stroke-width="1.5"><title>${i===0?'Inicio C01':'Fin del tramo '+i} · ${fmt(p[0])} min · ${fmt(p[1])} °C</title></circle>`).join('');svg+=`<polyline fill="none" stroke="${s.color}" stroke-width="${s.width||2.5}" stroke-linecap="round" stroke-linejoin="round" ${s.dotted?'stroke-dasharray="2 5"':s.dashed?'stroke-dasharray="7 4"':''} points="${points.map(p=>`${x(p[0]).toFixed(2)},${y(p[1]).toFixed(2)}`).join(' ')}"/>`;if(points.length===1||s.dot){const p=points.at(-1);svg+=`<circle cx="${x(p[0])}" cy="${y(p[1])}" r="${s.dot?5:2.5}" fill="${s.dot||s.color}"/>`;}}

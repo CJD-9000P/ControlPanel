@@ -1,6 +1,10 @@
 # Cambios del producto
 
-## 0.7.13
+## 0.7.14
+
+- El eje de tiempo de las gráficas termina en la duración de la serie visible más larga, sin redondear al siguiente intervalo.
+
+## 0.7.13 — referencia histórica, sustituida
 
 - Sondeo Modbus habitual de cuatro consultas cuando está disponible la lectura en bloque.
 - Importación de los CSV de cocciones del comunicador original, con y sin columna UTC.
