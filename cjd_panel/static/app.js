@@ -86,10 +86,19 @@ function renderState(){
  const physical=state.mode==='physical';
  $('connection').textContent=online?'MODBUS · Conectado':state.server_unavailable?'MODBUS · Desconocido':state.communication_status==='connecting'?'MODBUS · Conectando':'MODBUS · Desconectado';
  $('connection').className='connection '+(online?'online':state.communication_status==='connecting'?'pending':'offline');
- $('connection').title=physical?(state.port||'/dev/ttyUSB1'):'Adaptador del simulador';
- $('connection-mode').value=physical?'physical':'simulator';
- $('connection-mode').options[1].textContent='USB · '+(state.port||'/dev/ttyUSB1');
- $('connection-mode').disabled=busy||!!state.server_unavailable||!state.physical_usb_supported||!!state.active_firing||[1,2].includes(state.state);
+ $('connection').title=physical?(state.port||''):'Adaptador del simulador';
+ const connectionMode=$('connection-mode');
+ const selectedPort=physical?state.port:null;
+ const detectedPorts=state.serial_ports||[];
+ const fallbackPort=selectedPort||(!detectedPorts.length&&state.configured_port);
+ const ports=[...new Set([...detectedPorts,...(fallbackPort?[fallbackPort]:[])])];
+ if(JSON.stringify(ports)!==connectionMode.dataset.ports){
+  const options=ports.map(port=>new Option('USB · '+port,port));
+  connectionMode.replaceChildren(new Option('Simulador','simulator'),...options);
+  connectionMode.dataset.ports=JSON.stringify(ports);
+ }
+ connectionMode.value=selectedPort||'simulator';
+ connectionMode.disabled=busy||!!state.server_unavailable||!state.physical_usb_supported||!!state.active_firing||[1,2].includes(state.state);
  $('mode-label').textContent=physical?'':'SIMULADOR AISLADO';$('mode-label').hidden=physical;
  $('mode-description').parentElement.hidden=physical;
  $('simulator-tools').hidden=physical;
@@ -285,7 +294,7 @@ async function refreshOpenFiring(){if($('history-detail').hidden||!details.some(
 for(const b of document.querySelectorAll('[data-page]'))b.onclick=safe(()=>navigate(b.dataset.page));
 document.querySelector('.brand').onclick=safe(async e=>{e.preventDefault();await navigate('control');});
 $('mqtt-connection').onclick=()=>$('mqtt-dialog').showModal();
-$('connection-mode').onchange=safe(async()=>{const mode=$('connection-mode').value;try{await command('set_mode',{mode});}finally{await refresh();}});
+$('connection-mode').onchange=safe(async()=>{const choice=$('connection-mode').value;const selection=choice==='simulator'?{mode:'simulator'}:{mode:'physical',port:choice};try{await command('set_mode',selection);}finally{await refresh();}});
 $('run-memory').onchange=()=>{renderState();};
 $('control-memories').onclick=safe(async e=>{const b=e.target.closest('[data-preview-memory]');if(b&&!b.disabled){$('run-memory').value=b.dataset.previewMemory;lastControlMemoryKey='';$('control-memories').innerHTML=memoryMarkup(true);renderState();}});
 for(const [id,limit] of [['start-hour',24],['start-minute',60]]){

@@ -16,7 +16,7 @@ El servidor HTTP y SQLite están incluidos en Python: no necesitan Apache, nginx
 
 Los ajustes quedan en `.panel.json`; MQTT en `.mqtt.json`; la contraseña web se guarda como hash PBKDF2 salado en `.web-auth.json`. Los tres archivos tienen permisos 0600 y se excluyen de Git y del paquete. La contraseña MQTT debe guardarse para autenticarse contra el broker. No se incorporan los secretos ni los datos de la máquina desde la que se distribuye el instalador. HTTP no cifra el tráfico; para acceso fuera de la red de confianza utiliza un túnel o un proxy HTTPS.
 
-Una instalación nueva utiliza el simulador. Instalar soporte USB no conecta al horno; la selección USB se hace posteriormente desde el panel. Una actualización conserva el modo existente. La base se inicializa en `data/cjd.sqlite3`; si existe se crea una copia consistente `data/cjd.pre-install-*.bak` antes de abrirla. No se eliminan curvas ni cocciones.
+Una instalación nueva utiliza el simulador. Instalar soporte USB no conecta al horno; en el desplegable Conexión del panel puedes elegir el puerto USB detectado. El panel guarda la elección y prefiere los identificadores estables de Linux cuando están disponibles. Una actualización conserva el modo existente. La base se inicializa en `data/cjd.sqlite3`; si existe se crea una copia consistente `data/cjd.pre-install-*.bak` antes de abrirla. No se eliminan curvas ni cocciones.
 
 Para actualizar una carpeta que está funcionando, detén primero el panel:
 

@@ -1,4 +1,5 @@
 import argparse
+from dataclasses import replace
 import fcntl
 import os
 import math
@@ -10,7 +11,7 @@ from . import __version__
 from .config import PanelConfig
 from .auth import read_record
 from .modbus import SimulatedRTU
-from .serial_adapter import PhysicalRTU, SerialConfig
+from .serial_adapter import PhysicalRTU, SerialConfig, available_serial_ports
 from .store import Store
 from .worker import Worker
 from .server import Application, serve
@@ -64,17 +65,28 @@ def main():
         store = Store(args.data_dir / "cjd.sqlite3")
         settings_path = args.data_dir/'connection.json'
         mode = 'simulator'
+        selected_port = None
         if settings_path.exists():
             try:
-                mode = json.loads(settings_path.read_text())['mode']
+                connection = json.loads(settings_path.read_text())
+                mode = connection['mode']
+                selected_port = connection.get('port')
+                if selected_port is not None:
+                    replace(serial_config, port=selected_port)
                 if mode not in ('simulator','physical'):
                     raise ValueError('modo no válido')
             except (OSError,ValueError,KeyError,TypeError):
                 store.close()
                 parser.error('No se pudo leer el modo de conexión guardado.')
-        def adapter_factory(selected):
-            return SimulatedRTU(segment_seconds=args.segment_seconds) if selected=='simulator' else PhysicalRTU(serial_config)
-        worker = Worker(adapter_factory(mode),store,adapter_factory=adapter_factory,settings_path=settings_path)
+        def adapter_factory(selected, port=None):
+            if selected == 'simulator':
+                return SimulatedRTU(segment_seconds=args.segment_seconds)
+            return PhysicalRTU(replace(serial_config, port=port) if port else serial_config)
+
+        worker = Worker(adapter_factory(mode, selected_port), store,
+                        adapter_factory=adapter_factory, settings_path=settings_path,
+                        serial_ports=available_serial_ports, selected_port=selected_port,
+                        default_port=serial_config.port)
         bridge = None
         try:
             if mqtt_config:
@@ -92,7 +104,7 @@ def main():
                 raise KeyboardInterrupt
             signal.signal(signal.SIGTERM, stop)
             print(f"CJD Control Panel {__version__} · http://{args.host}:{server.server_port}", flush=True)
-            print(f"Modo inicial: {mode}. Puerto físico configurado: {serial_config.port}.",flush=True)
+            print(f"Modo inicial: {mode}. Puerto físico configurado: {selected_port or serial_config.port}.",flush=True)
             try:
                 server.serve_forever()
             except KeyboardInterrupt:

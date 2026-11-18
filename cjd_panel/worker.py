@@ -14,9 +14,13 @@ from .modbus import CommunicationError, MEMORIES
 
 
 class Worker:
-    def __init__(self, adapter, store, interval=1, *, adapter_factory=None, settings_path=None):
+    def __init__(self, adapter, store, interval=1, *, adapter_factory=None, settings_path=None,
+                 serial_ports=None, selected_port=None, default_port=None):
         self.adapter, self.store, self.interval = adapter, store, interval
         self.adapter_factory = adapter_factory
+        self.serial_ports = serial_ports
+        self.selected_port = selected_port
+        self.default_port = default_port
         self.settings_path = Path(settings_path) if settings_path else None
         self.mode = getattr(adapter, 'mode', 'simulator')
         self.generation = 0
@@ -68,7 +72,9 @@ class Worker:
                           scheduled_start=copy.deepcopy(self.scheduled and {
                               key: self.scheduled[key] for key in ('start_at', 'memory')
                           }),
-                          port=getattr(self.adapter,'port',None))
+                          port=getattr(self.adapter, 'port', None),
+                          configured_port=self.selected_port or self.default_port,
+                          serial_ports=self.serial_ports() if self.serial_ports else [])
             return result
 
     def _run(self):
@@ -274,10 +280,14 @@ class Worker:
             self.stop_event.wait(0.3)
         raise CommunicationError("Estado final no confirmado en CAH; resultado incierto.")
 
-    def _switch_mode(self, mode):
+    def _switch_mode(self, mode, port=None):
         if mode not in ('simulator','physical') or self.adapter_factory is None:
             raise ValueError('Modo de comunicación no disponible.')
-        if mode == self.mode:
+        if port is not None and (mode != 'physical' or not self.serial_ports
+                                 or port not in self.serial_ports()
+                                 and port not in (self.selected_port, self.default_port)):
+            raise ValueError('El puerto USB seleccionado no está disponible.')
+        if mode == self.mode and (port is None or port == getattr(self.adapter, 'port', None)):
             return {'message': 'El modo ya está seleccionado.', 'state': self.snapshot()}
         if self.state.get('online'):
             try:
@@ -286,13 +296,27 @@ class Worker:
                 self._offline(exc)
         if self.active or self.state.get('state') in (1,2):
             raise ValueError('No se puede cambiar de modo durante una cocción en marcha o pausada.')
+        selected_port = port or self.selected_port
+        if self.settings_path:
+            connection = {'mode': mode}
+            if selected_port:
+                connection['port'] = selected_port
+            temporary = self.settings_path.with_suffix('.tmp')
+            fd = os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
+            with os.fdopen(fd,'w') as f:
+                json.dump(connection,f)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temporary,self.settings_path)
         with self.lock:
             self.state = {**self.state,'online':False,'error':'Cambiando el origen de comunicación…'}
         self.adapter.close()
-        adapter = self.adapter_factory(mode)
+        adapter = (self.adapter_factory(mode, selected_port)
+                   if mode == 'physical' and selected_port else self.adapter_factory(mode))
         with self.lock:
             self.adapter = adapter
             self.mode = mode
+            self.selected_port = selected_port
             self.generation += 1
             self.state = dict(online=False,mode=mode,error='Conectando con el programador…')
             self.memories = {}
@@ -300,14 +324,6 @@ class Worker:
             self.previous = self.last_success = None
             self.offline_reported = False
             self.freshness_limit = max(10,self.interval*3+getattr(adapter,'timeout',.8)*10+6)
-        if self.settings_path:
-            temporary = self.settings_path.with_suffix('.tmp')
-            fd = os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
-            with os.fdopen(fd,'w') as f:
-                json.dump({'mode': mode},f)
-                f.flush()
-                os.fsync(f.fileno())
-            os.replace(temporary,self.settings_path)
         self.store.event('mode_changed','app',f'Origen de comunicación: {mode}. No se enviaron órdenes de cocción.')
         try:
             self._poll()
@@ -344,7 +360,7 @@ class Worker:
             raise ValueError("Cancela primero la cocción programada.")
         if operation == 'set_mode':
             previous_generation = self.generation
-            result = self._switch_mode(data.get('mode'))
+            result = self._switch_mode(data.get('mode'), data.get('port'))
             if self.generation != previous_generation:
                 self._cancel_start("Cancelada la próxima cocción al cambiar la conexión.")
                 result["state"] = self.snapshot()

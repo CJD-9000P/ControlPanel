@@ -109,16 +109,17 @@ class ModeSwitchTest(unittest.TestCase):
         self.tmp=tempfile.TemporaryDirectory()
         self.store=Store(Path(self.tmp.name)/'app.sqlite3')
         self.adapters=[]
-        def factory(mode):
+        def factory(mode, port=None):
             if self.adapters:self.assertTrue(self.adapters[-1].stop_event.is_set())
             adapter=SimulatedRTU(segment_seconds=60,timeout=.1)
             adapter.mode=mode
-            adapter.port='/dev/pts/test-only' if mode=='physical' else None
+            adapter.port=(port or '/dev/pts/test-only') if mode=='physical' else None
             self.adapters.append(adapter)
             return adapter
         self.factory=factory
         self.worker=Worker(factory('simulator'),self.store,interval=.05,
-            adapter_factory=factory,settings_path=Path(self.tmp.name)/'connection.json')
+            adapter_factory=factory,settings_path=Path(self.tmp.name)/'connection.json',
+            serial_ports=lambda: ['/dev/ttyUSB0', '/dev/ttyUSB1'])
         self.worker.start()
         self.worker.submit('read').result(3)
     def tearDown(self):
@@ -139,6 +140,22 @@ class ModeSwitchTest(unittest.TestCase):
         self.worker.submit('set_mode',{'mode':'simulator'}).result(4)
         self.assertEqual(self.worker.snapshot()['mode'],'simulator')
         self.assertEqual(len(self.adapters),3)
+
+    def test_selected_usb_port_is_validated_and_saved_across_mode_changes(self):
+        import json
+
+        settings = Path(self.tmp.name) / 'connection.json'
+        self.assertEqual(self.worker.snapshot()['serial_ports'], ['/dev/ttyUSB0', '/dev/ttyUSB1'])
+        with self.assertRaises(ValueError):
+            self.worker.submit('set_mode', {'mode': 'physical', 'port': '/dev/null'}).result(3)
+        for port in ('/dev/ttyUSB0', '/dev/ttyUSB1'):
+            self.worker.submit('set_mode', {'mode': 'physical', 'port': port}).result(3)
+            self.assertEqual(self.worker.snapshot()['port'], port)
+            self.assertEqual(json.loads(settings.read_text()), {'mode': 'physical', 'port': port})
+        self.worker.submit('set_mode', {'mode': 'simulator'}).result(3)
+        self.worker.submit('set_mode', {'mode': 'physical'}).result(3)
+        self.assertEqual(self.worker.snapshot()['port'], '/dev/ttyUSB1')
+        self.assertTrue(all(adapter.furnace.write_log == [] for adapter in self.adapters))
 
     def test_switch_while_running_or_paused_is_rejected_without_stop(self):
         self.worker.submit('run',{'memory':1}).result(3)

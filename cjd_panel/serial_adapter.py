@@ -50,6 +50,17 @@ class SerialConfig:
             raise ValueError('No se pudo cargar la configuración Modbus.') from None
 
 
+def available_serial_ports():
+    """Prefer stable USB identifiers and avoid listing their tty aliases twice."""
+    stable = sorted(path for path in Path('/dev/serial/by-id').glob('*')
+                    if path.is_symlink() and path.exists())
+    targets = {path.resolve() for path in stable}
+    devices = sorted(path for pattern in ('ttyUSB*', 'ttyACM*')
+                     for path in Path('/dev').glob(pattern)
+                     if path.is_char_device() and path.resolve() not in targets)
+    return [str(path) for path in stable + devices]
+
+
 def serial_client(config):
     try:
         module = importlib.import_module('pymodbus.client')

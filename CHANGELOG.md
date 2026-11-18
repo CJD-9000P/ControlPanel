@@ -1,6 +1,10 @@
 # Cambios del producto
 
-## 0.7.9
+## 0.7.10
+
+- El desplegable Conexión detecta los puertos USB del equipo y guarda el puerto elegido para el programador.
+
+## 0.7.9 — referencia histórica, sustituida
 
 - Botones más anchos en Mis curvas, con dos por fila.
 - La gráfica del programa en Control del horno se ajusta al ancho disponible de su marco y se retira el aviso de importación de Mis cocciones.
