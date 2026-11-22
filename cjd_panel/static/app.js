@@ -29,7 +29,7 @@ async function api(path,options={}){
  }catch(e){if(e.name==='AbortError')throw Error('El servidor local no responde a tiempo; consulta el estado antes de repetir una orden.');throw e;}finally{clearTimeout(timeout);}
 }
 async function download(path,name){const blob=await api(path,{download:true});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-async function confirmAction(title,message){const dialog=$('confirm-dialog');if(dialog.open)return false;$('confirm-title').textContent=title;$('confirm-message').textContent=message;dialog.returnValue='cancel';dialog.showModal();return new Promise(resolve=>dialog.addEventListener('close',()=>resolve(dialog.returnValue==='confirm'),{once:true}));}
+async function confirmAction(title,message,{allowSchedule=false}={}){const dialog=$('confirm-dialog');if(dialog.open)return false;$('confirm-title').textContent=title;$('confirm-message').textContent=message;$('confirm-schedule').hidden=!allowSchedule;$('confirm-submit').textContent=allowSchedule?'Iniciar ahora':'Confirmar';dialog.returnValue='cancel';dialog.showModal();return new Promise(resolve=>dialog.addEventListener('close',()=>resolve(allowSchedule&&dialog.returnValue==='schedule'?'schedule':dialog.returnValue==='confirm'),{once:true}));}
 function timeScale(maximum){
  const max=maximum>0?maximum:1/60;
  const seconds=max*60,steps=[1,2,5,10,15,20,30,60,120,300,600,900,1800,3600,7200,14400,21600,43200,86400];
@@ -131,28 +131,30 @@ function renderState(){
  lastModeGeneration=state.mode_generation;
  $('version').textContent=state.version?'v'+state.version:'';
  for(const id of ['pv','sv'])$(id).textContent=online?state[id]:'—';
- const label=online?['PARADO','FUNCIONANDO','PAUSADO'][state.state]:'SIN COMUNICACIÓN';$('state-text').textContent=label;const stateClass=online?({0:'stopped',1:'running',2:'paused'}[state.state]||''):'';
- $('programmer-state').className='metric state-metric '+stateClass;
+ const scheduled=state.scheduled_start;
+ const pendingStart=online&&state.state===0&&!!scheduled;
+ const label=online?['PARADO','FUNCIONANDO','PAUSADO'][state.state]:'SIN COMUNICACIÓN';
+ $('state-text').textContent=pendingStart?'INICIO PROGRAMADO':label;
+ const stateClass=online?({0:'stopped',1:'running',2:'paused'}[state.state]||''):'';
+ $('programmer-state').className='metric state-metric '+(pendingStart?'scheduled':stateClass);
  $('step').textContent=online?(state.step<=19?`${state.step} / 19`:'C20 · fin'):'—';$('updated').textContent=state.timestamp?'Lectura '+date(state.timestamp):'Esperando sincronización';
  $('connection-error').hidden=online;$('connection-error').textContent=state.error||'Esperando respuesta.';
  if(online&&state.state===0&&lastState!==null&&lastState!==0)$('run-memory').value='';
  if(online)lastState=state.state;
- const armed=['1','2','3','4'].includes($('run-memory').value);
- const scheduled=state.scheduled_start;
  const scheduleLocked=busy||!online||state.state!==0||!!scheduled;
  $('start-date').disabled=scheduleLocked;
  $('start-hour').disabled=$('start-minute').disabled=scheduleLocked||!$('start-date').value;
  $('scheduled-start').hidden=!scheduled;
+ $('cancel-start').hidden=!scheduled;
+ $('stop').hidden=!!scheduled&&state.state===0;
  $('cancel-start').disabled=busy||!!state.server_unavailable;
  if(scheduled){
   const minutes=Math.max(0,Math.ceil((Date.parse(scheduled.start_at)-Date.now())/60000));
   $('start-countdown').textContent=`Memoria ${scheduled.memory} · ${date(scheduled.start_at)} · faltan ${Math.floor(minutes/60)} h ${minutes%60} min`;
  }
  $('run-memory').disabled=busy||!online||state.state!==0;
- $('run').disabled=busy||!online||state.state!==0||!armed||!!scheduled;$('pause').disabled=busy||!online||state.state!==1;$('resume').disabled=busy||!online||state.state!==2;$('stop').disabled=busy||!online||state.state===0;
+ $('run').disabled=scheduleLocked;$('pause').disabled=busy||!online||state.state!==1;$('resume').disabled=busy||!online||state.state!==2;$('stop').disabled=busy||!online||state.state===0;
  $('control-memories').hidden=[1,2].includes(state.state);$('memory-choice-help').hidden=[1,2].includes(state.state);
- $('selected-memory').textContent=!online?'Memoria sin confirmar': [1,2].includes(state.state)?`Memoria activa: ${state.memory}`:armed?`Memoria ${$('run-memory').value} seleccionada`:'Elige una memoria en las tarjetas.';
- const selectedSource=state.memories?.[$('run-memory').value];const selectedMatches=selectedSource?matches(selectedSource):[];if(online&&state.state===0&&armed&&selectedMatches.length)$('selected-memory').textContent+=' · '+selectedMatches.map(p=>p.name).join(' / ');
  renderMemories();renderProgram();renderSegmentTime();
  const readings=state.recent||[],first=readings.length?new Date(readings[0].timestamp).getTime():0;
  drawChart($('live-chart'),[{color:colors[0],points:readings.map(r=>[(new Date(r.timestamp)-first)/60000,r.pv])},{color:colors[1],dashed:true,points:readings.map(r=>[(new Date(r.timestamp)-first)/60000,r.sv])}],{axis:'tiempo real'});
@@ -191,7 +193,10 @@ function renderSegmentTime(){
  caption.textContent=`${fmt(percent,0)} % · segundos estimados`;
  progress.setAttribute('aria-valuetext',total>0?caption.textContent:'Sin duración programada');
 }
+let programFrame = 0;
 function renderProgram(){
+ cancelAnimationFrame(programFrame);
+ const previous = journey;
  const active=state.online&&[1,2].includes(state.state);const memory=active?state.memory:Number($('run-memory').value)||state.memory;
  const source=state.memories?.[memory];if(!source){$('program-chart').innerHTML='<div class="empty">Esperando el programa de las memorias.</div>';$('control-segments').innerHTML='';return;}
  const sameJourney=journey.memory===memory;
@@ -204,10 +209,31 @@ function renderProgram(){
  if(active&&rawStep>=1&&rawStep<=19){const start=source[rawStep-1].temperature,end=source[rawStep].temperature,t=source[rawStep-1].minutes;fraction=end!==start?(state.sv-start)/(end-start):t>0?state.minutes/t:0;fraction=Math.max(0,Math.min(1,fraction));
   if(journey.active!==state.active_firing||journey.memory!==memory)journey={memory,step:rawStep,fraction,active:state.active_firing};else journey={...journey,step:rawStep,fraction};
  }
- let series=[{color:'#b46d68',points,nodes:true}];
- if(state.online&&journey.memory===memory&&journey.step>0&&points.length>1){const i=Math.min(points.length-2,journey.step-1),from=points[i],to=points[i+1],dot=[from[0]+(to[0]-from[0])*journey.fraction,from[1]+(to[1]-from[1])*journey.fraction];series.push({color:colors[0],points:[...points.slice(0,i+1),dot],dot:colors[1],width:3});}
  const chart=$('program-chart');
- drawChart(chart,series,{plotWidth:chartContentWidth(chart),axis:'minutos virtuales programados',empty:state.online?'Programa sin tramos con tiempo positivo.':'Vista previa de C01 no disponible sin PV confirmada.'});
+ const plotWidth=chartContentWidth(chart);
+ const confirmed=journey;
+ const drawProgress=fraction=>{
+  const series=[{color:'#b46d68',points,nodes:true}];
+  if(state.online&&confirmed.memory===memory&&confirmed.step>0&&points.length>1){
+   const i=Math.min(points.length-2,confirmed.step-1),from=points[i],to=points[i+1];
+   const dot=[from[0]+(to[0]-from[0])*fraction,from[1]+(to[1]-from[1])*fraction];
+   series.push({color:colors[0],points:[...points.slice(0,i+1),dot],dot:colors[1],width:3});
+  }
+  drawChart(chart,series,{plotWidth,axis:'minutos virtuales programados',empty:state.online?'Programa sin tramos con tiempo positivo.':'Vista previa de C01 no disponible sin PV confirmada.'});
+ };
+ const animate=state.mode==='simulator'&&active&&state.state===1&&page==='control'
+  &&!$('program-chart-panel').hidden&&!matchMedia('(prefers-reduced-motion: reduce)').matches
+  &&previous.active===confirmed.active&&previous.memory===memory
+  &&previous.step===confirmed.step&&confirmed.fraction>previous.fraction;
+ if(animate){
+  const started=performance.now();
+  const frame=now=>{
+   const weight=Math.min(1,(now-started)/450);
+   drawProgress(previous.fraction+(confirmed.fraction-previous.fraction)*weight);
+   if(weight<1)programFrame=requestAnimationFrame(frame);
+  };
+  programFrame=requestAnimationFrame(frame);
+ }else drawProgress(confirmed.fraction);
  const key=JSON.stringify([memory,source]);if(key!==lastTableKey){$('control-segments').innerHTML=source.slice(0,19).map((s,i)=>`<tr data-control-step="${i+1}"><td>${i+1}</td><td>${i===0?'C01 · ':''}<span data-control-start="${i}">${fmt(segments[i].temperature,0)}</span> °C</td><td>${s.minutes} min</td><td>${source[i+1].temperature} °C</td></tr>`).join('');lastTableKey=key;}
  const initial=document.querySelector('[data-control-start="0"]');if(initial)initial.textContent=fmt(segments[0].temperature,0);
  document.querySelectorAll('[data-control-step]').forEach(row=>{const n=Number(row.dataset.controlStep);row.classList.toggle('segment-active',active&&n===rawStep);row.classList.toggle('segment-completed',state.online&&journey.memory===memory&&n<journey.step);if(active&&n===rawStep)row.setAttribute('aria-current','step');else row.removeAttribute('aria-current');});
@@ -216,13 +242,37 @@ function renderProgram(){
 }
 function updatePhysicalBadges(){document.querySelectorAll('[data-match-profile]').forEach(el=>{const p=profiles.find(p=>p.id===el.dataset.matchProfile);if(!p)return;const ids=state.online?Object.entries(state.memories||{}).filter(([,s])=>matches(s).some(m=>m.id===p.id)).map(([id])=>id):[];el.textContent=!state.online?'Memorias sin confirmar':ids.length?'Coincide con '+(ids.length===1?'memoria ':'memorias ')+ids.join(', ')+' del programador':'Solo en biblioteca';});}
 function renderEvents(target,events,limit=15){const origins={app:'Aplicación',mqtt:'Home Assistant',observed:'Observado',system:'Sistema',import:'Importado'};target.innerHTML=events.length?events.slice(0,limit).map(e=>`<div class="event-row"><time>${escapeHTML(date(e.timestamp))}</time><span>${escapeHTML(e.message)}</span><span class="event-origin">${origins[e.origin]||escapeHTML(e.origin)}</span></div>`).join(''):'<div class="empty">Sin eventos registrados.</div>';}
-async function refresh(){try{state=await api('state');renderState();}catch(e){state={...state,online:false,server_unavailable:true,error:'Sin comunicación con el servidor local: '+e.message};renderState();return;}
- if(page==='control'){try{renderEvents($('events'),await api('events'));}catch(e){$('events').textContent='No se pudo actualizar la actividad: '+e.message;}}
+async function refresh({events=true}={}){try{state=await api('state');renderState();}catch(e){state={...state,online:false,server_unavailable:true,error:'Sin comunicación con el servidor local: '+e.message};renderState();return;}
+ if(events&&page==='control'){try{renderEvents($('events'),await api('events'));}catch(e){$('events').textContent='No se pudo actualizar la actividad: '+e.message;}}
 }
-async function command(operation,extra={}){if(busy)throw Error('Espera a que termine la orden anterior.');busy=true;renderState();try{const result=await api('commands',{method:'POST',body:{operation,...extra}});if(result.state)state={...result.state,version:state.version};toast(result.message);await refresh();return result;}finally{busy=false;renderState();}}
+function commandNotification(operation,extra,result){
+ switch(operation){
+  case 'run':return `Cocción iniciada en la memoria ${extra.memory}.`;
+  case 'pause':return 'Cocción pausada.';
+  case 'resume':return 'Cocción reanudada.';
+  case 'stop':return 'Cocción detenida.';
+  case 'load':{
+   const device=result.state?.mode==='simulator'?'el simulador':'el programador';
+   return `Curva cargada en la memoria ${extra.memory}. Confirmado por ${device}.`;
+  }
+  default:return result.message;
+ }
+}
+async function command(operation,extra={}){if(busy)throw Error('Espera a que termine la orden anterior.');busy=true;renderState();try{const result=await api('commands',{method:'POST',body:{operation,...extra}});if(result.state)state={...result.state,version:state.version};toast(commandNotification(operation,extra,result));await refresh();return result;}finally{busy=false;renderState();}}
+const helpPages=['ayuda-curvas','ayuda-control','ayuda-cocciones'];
+const pages=['control','curves','history',...helpPages];
 async function navigate(next){if(next===page)return;if(dirty&&!await confirmAction('¿Salir del editor?','Los cambios de la curva sin guardar se perderán.'))return;if(firingDirty&&!await confirmAction('¿Salir del historial?','Las observaciones sin guardar se perderán.'))return;
  dirty=false;firingDirty=false;if(!$('editor-view').hidden){$('editor-view').hidden=true;$('curves-list-view').hidden=false;}
- page=next;for(const name of ['control','curves','history'])$('page-'+name).hidden=name!==page;document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===page));location.hash=page;
+ page=next;
+ for(const name of pages)$('page-'+name).hidden=name!==page;
+ $('help-pages').hidden=!helpPages.includes(page);
+ document.querySelectorAll('.topbar [data-page]').forEach(link=>link.classList.toggle('active',link.dataset.page===page));
+ document.querySelectorAll('.help-nav a').forEach(link=>{
+  if(link.dataset.page===page)link.setAttribute('aria-current','page');
+  else link.removeAttribute('aria-current');
+ });
+ location.hash=page;
+ if(helpPages.includes(page))$('help-pages').scrollIntoView({block:'start'});
  if(page==='curves'){await loadProfiles();renderMemories();}if(page==='history')await loadHistory();}
 async function loadProfiles(){profiles=await api('profiles');renderProfileList();lastMemoryKey='';lastControlMemoryKey='';renderMemories();}
 function renderProfileList(){const search=$('profile-search').value.toLocaleLowerCase(),filtered=profiles.filter(p=>(p.name+' '+p.notes).toLocaleLowerCase().includes(search));$('profile-count').textContent=`${profiles.length} curvas guardadas`;
@@ -301,7 +351,7 @@ function metricDelta(value,baseline,key){if(!Number.isFinite(value)||!Number.isF
 function renderFiringDetail(updateForms=true){
  const f=details[0];if(!f)return;$('history-detail').hidden=false;$('export-firing').hidden=!detailID;$('firing-form').hidden=!detailID;
  $('history-title').textContent=detailID?f.name:'Comparación de cocciones';$('history-subtitle').textContent=details.map(f=>`${f.name} · ${f.samples} lecturas · ${states[f.status]||f.status} · ${f.mode==='physical'?'Horno físico':'Simulación'}`).join(' | ');
- renderHistoryChart();renderStatistics();$('history-snapshot').textContent=(detailID?(f.snapshot.length?'Programa guardado: C01 inicial conservada.':'CSV sin snapshot: no se inventa el programa.'):'Cada cocción comienza en su propio inicio.')+' Ambas gráficas comparten escala temporal. El programa usa minutos teóricos, sin pausas ni esperas reales. Franjas azules: estado PAUSA registrado; grises: huecos de comunicación. Los huecos no se unen con líneas.';
+ renderHistoryChart();renderStatistics();$('history-snapshot').textContent=(detailID?(f.snapshot.length?'Programa guardado: C01 inicial conservada.':'Cocción importada desde CSV.'):'Cada cocción comienza en su propio inicio.')+' Ambas gráficas comparten escala temporal. El programa usa minutos teóricos, sin pausas ni esperas reales. Franjas azules: estado PAUSA registrado; grises: huecos de comunicación. Los huecos no se unen con líneas.';
  $('snapshot-detail').hidden=!detailID||!f.snapshot.length;$('snapshot-table').innerHTML=detailID?'<table><thead><tr><th>Punto</th><th>°C</th><th>Minutos</th></tr></thead><tbody>'+f.snapshot.map((s,i)=>`<tr><td>C${i+1}</td><td>${s.temperature}</td><td>${s.minutes}</td></tr>`).join('')+'</tbody></table>':'';
  if(detailID){if(updateForms){$('firing-name').value=f.name;$('firing-notes').value=f.notes||'';}$('delete-firing').disabled=!f.ended_at;}
  renderEvents($('history-events'),details.flatMap(f=>f.events.map(e=>({...e,message:details.length>1?f.name+': '+e.message:e.message}))).sort((a,b)=>b.timestamp.localeCompare(a.timestamp)),10000);
@@ -315,7 +365,11 @@ async function showFiring(ids){if(firingDirty&&!await confirmAction('¿Cambiar d
 async function refreshOpenFiring(){if($('history-detail').hidden||!details.some(f=>!f.ended_at))return;const current=details,request=detailRequest;
  try{const loaded=await Promise.all(current.map(f=>api('firings/'+f.id)));if(request!==detailRequest||current!==details||page!=='history')return;details=loaded;renderFiringDetail(!firingDirty);}catch(e){if(request===detailRequest)$('detail-update-status').textContent='No se pudo actualizar el detalle: '+e.message;}
 }
-for(const b of document.querySelectorAll('[data-page]'))b.onclick=safe(()=>navigate(b.dataset.page));
+for(const link of document.querySelectorAll('[data-page]'))link.onclick=safe(async event=>{
+ if(event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;
+ event.preventDefault();
+ await navigate(link.dataset.page);
+});
 document.querySelector('.brand').onclick=safe(async e=>{e.preventDefault();await navigate('control');});
 $('mqtt-connection').onclick=()=>$('mqtt-dialog').showModal();
 $('update-program').onclick=safe(async()=>{
@@ -342,24 +396,77 @@ for(const [id,limit] of [['start-hour',24],['start-minute',60]]){
 }
 $('start-date').onchange=renderState;
 $('cancel-start').onclick=safe(()=>command('cancel_start'));
-$('run').onclick=safe(async()=>{const memory=Number($('run-memory').value);if(![1,2,3,4].includes(memory))throw Error('Elige explícitamente una memoria antes de iniciar.');const startDate=$('start-date').value;if(startDate){
+const startMemoryDialog=$('start-memory-dialog');
+$('cancel-start-memory').onclick=()=>startMemoryDialog.close('cancel');
+const scheduleFiringDialog=$('schedule-firing-dialog');
+$('cancel-schedule-firing').onclick=()=>scheduleFiringDialog.close('cancel');
+async function prepareFiring(){
+
+ const generation=state.mode_generation;
+ const isAvailable=()=>!$('run').disabled&&state.mode_generation===generation;
+ if(!isAvailable()||startMemoryDialog.open)return;
+ let memory=Number($('run-memory').value);
+ if(![1,2,3,4].includes(memory)){
+  const form=startMemoryDialog.querySelector('form');
+  $('start-memory-choices').innerHTML=Object.entries(state.memories||{}).map(([id,segments])=>`
+   <label class="radio-memory">
+    <input type="radio" name="start-memory" value="${id}" required>
+    <span class="start-memory-summary">
+     <strong>${escapeHTML(matchLabel(segments))}</strong>
+     <small>Memoria ${id} · ${metrics(segments)}</small>
+    </span>
+   </label>`).join('');
+  startMemoryDialog.returnValue='cancel';
+  startMemoryDialog.showModal();
+  await new Promise(resolve=>startMemoryDialog.addEventListener('close',resolve,{once:true}));
+  if(startMemoryDialog.returnValue!=='continue'||!isAvailable())return;
+  memory=Number(new FormData(form).get('start-memory'));
+  if(![1,2,3,4].includes(memory))return;
+  $('run-memory').value=String(memory);
+  renderState();
+ }
+ const segments=state.memories?.[memory];
+ const matchingProfiles=segments?.length===20?matches(segments):[];
+ const names=matchingProfiles.map(profile=>`"${profile.name}"`);
+ let memoryMessage=`Se va a utilizar la memoria ${memory} del programador`;
+ if(names.length===1)memoryMessage+=`, que corresponde con la curva ${names[0]}.`;
+ else if(names.length>1)memoryMessage+=`, que corresponde con las curvas ${names.join(', ')}.`;
+ else memoryMessage+='. Esta memoria no tiene un perfil coincidente.';
+ const action=await confirmAction(
+  'Iniciar desde memoria '+memory,
+  `${memoryMessage} La temperatura de inicio del primer tramo se ajusta a la temperatura actual del sensor térmico.`,
+  {allowSchedule:true}
+ );
+ if(!action||!isAvailable())return;
+ if(action==='schedule'){
+  scheduleFiringDialog.querySelector('form').reset();
+  scheduleFiringDialog.returnValue='cancel';
+  renderState();
+  scheduleFiringDialog.showModal();
+  await new Promise(resolve=>scheduleFiringDialog.addEventListener('close',resolve,{once:true}));
+  if(scheduleFiringDialog.returnValue!=='continue'||!isAvailable())return;
+  const startDate=$('start-date').value;
  const hour=$('start-hour').value,minute=$('start-minute').value;
  if(!hour||!minute)throw Error('Selecciona la hora y los minutos.');
  const time=new Date(`${startDate}T${hour}:${minute}`);
  if(!Number.isFinite(time.getTime())||time.getTime()<=Date.now())throw Error('Elige una fecha y hora futura.');
- if(await confirmAction('Programar memoria '+memory,`El programador iniciará esta memoria el ${date(time)}.`)){
+ if(await confirmAction('Programar memoria '+memory,`${memoryMessage} El programador iniciará esta memoria el ${date(time)}.`)){
+  if(!isAvailable())return;
   await command('schedule_start',{memory,start_at:time.toISOString()});
   for(const id of ['start-date','start-hour','start-minute'])$(id).value='';
   renderState();
  }
  return;
-}if(await confirmAction('Iniciar desde memoria '+memory,`Se utilizará el programa ya verificado de la memoria ${memory}. C01 se adapta a PV antes de RUN. No se carga un perfil de la biblioteca en esta acción.`))await command('run',{memory});});
+ }
+ await command('run',{memory});
+}
+$('run').onclick=safe(prepareFiring);
 $('pause').onclick=safe(()=>command('pause'));$('resume').onclick=safe(()=>command('resume'));
-$('stop').onclick=safe(async()=>{if(await confirmAction('Parar la cocción','Se enviará STOP y se comprobará PARADO. El historial conservará las lecturas y eventos.'))await command('stop');});
+$('stop').onclick=safe(async()=>{if(await confirmAction('Parar la cocción','Se enviara la orden que detiene la cocción, ¿esta segur@?'))await command('stop');});
 for(const b of document.querySelectorAll('[data-sim]'))b.onclick=safe(()=>command('simulate',{action:b.dataset.sim}));
 $('new-profile').onclick=safe(()=>editProfile({name:'',notes:'',segments:Array.from({length:20},(_,i)=>({temperature:i?100:state.online?state.pv:0,minutes:i===0?10:0}))}));
 $('profile-search').oninput=renderProfileList;
-$('profile-list').onclick=safe(async e=>{const b=e.target.closest('[data-profile-action]');if(!b)return;const p=profiles.find(p=>p.id===b.dataset.id);if(!p)throw Error('Curva no disponible.');switch(b.dataset.profileAction){case'edit':await editProfile(p,p.id);break;case'load':openLoad(p);break;case'duplicate':{const copy=await api('profiles',{method:'POST',body:{...p,name:(p.name+' · copia').slice(0,120)}});await loadProfiles();toast('Curva duplicada: '+copy.name);break;}case'delete':if(await confirmAction('Eliminar '+p.name,'Se elimina solo el perfil local. Las memorias y snapshots del historial permanecen.')){await api('profiles/'+p.id,{method:'DELETE'});await loadProfiles();toast('Curva eliminada.');}break;}});
+$('profile-list').onclick=safe(async e=>{const b=e.target.closest('[data-profile-action]');if(!b)return;const p=profiles.find(p=>p.id===b.dataset.id);if(!p)throw Error('Curva no disponible.');switch(b.dataset.profileAction){case'edit':await editProfile(p,p.id);break;case'load':openLoad(p);break;case'duplicate':{const copy=await api('profiles',{method:'POST',body:{...p,name:(p.name+' · copia').slice(0,120)}});await loadProfiles();toast('Curva duplicada: '+copy.name);break;}case'delete':if(await confirmAction('Eliminar '+p.name,'Se eliminará la curva de la biblioteca.')){await api('profiles/'+p.id,{method:'DELETE'});await loadProfiles();toast('Curva eliminada.');}break;}});
 $('profile-form').oninput=()=>{dirty=true;previewCurve();};
 $('profile-form').onsubmit=safe(async e=>{e.preventDefault();const p=await api('profiles'+(selected?'/'+selected:''),{method:selected?'PUT':'POST',body:formProfile()});dirty=false;await loadProfiles();await editProfile(p,p.id);toast('Curva guardada en la biblioteca');});
 $('back-curves').onclick=safe(leaveEditor);$('cancel-editor').onclick=safe(leaveEditor);
@@ -385,13 +492,24 @@ for(const id of ['show-sv','show-deviation','show-program','show-segments','show
 $('export-firing').onclick=safe(()=>download('firings/'+detailID+'/csv','coccion-'+detailID+'.csv'));
 $('firing-form').oninput=()=>{firingDirty=true;};
 $('firing-form').onsubmit=safe(async e=>{e.preventDefault();await api('firings/'+detailID,{method:'PUT',body:{name:$('firing-name').value,notes:$('firing-notes').value}});firingDirty=false;await loadHistory();await showFiring([detailID]);toast('Nombre y observaciones guardados.');});
-$('delete-firing').onclick=safe(async()=>{if(await confirmAction('Eliminar esta cocción','Se eliminarán sus lecturas, snapshot, eventos y observaciones. Los perfiles y las memorias no se modifican.')){await api('firings/'+detailID,{method:'DELETE'});selectedFirings.delete(detailID);detailID=null;details=[];firingDirty=false;$('history-detail').hidden=true;await loadHistory();toast('Cocción eliminada.');}});
+$('delete-firing').onclick=safe(async()=>{if(await confirmAction('Eliminar esta cocción','Se eliminarán sus lecturas, eventos y observaciones. Los perfiles y las memorias no se modifican.')){await api('firings/'+detailID,{method:'DELETE'});selectedFirings.delete(detailID);detailID=null;details=[];firingDirty=false;$('history-detail').hidden=true;await loadHistory();toast('Cocción eliminada.');}});
 $('backup').onclick=safe(()=>download('backup','cjd-backup.sqlite3'));
 for(const[id,type]of[['import-profile','profiles'],['import-firing','firings']])$(id).onclick=()=>{importType=type;$('csv-file').value='';$('csv-file').click();};
 $('csv-file').onchange=safe(async()=>{const file=$('csv-file').files[0];if(!file)return;if(file.size>32*1024*1024)throw Error('El archivo supera 32 MiB.');const result=await api(importType+'/import',{method:'POST',headers:{'Content-Type':'text/csv'},body:await file.text()});if(importType==='profiles'){await loadProfiles();await editProfile(result,result.id);}else{await loadHistory();await showFiring([result.id]);}toast(importType==='profiles'?'Curva importada.':'Cocción añadida al historial.');});
 $('auth-form').onsubmit=safe(async e=>{e.preventDefault();token=$('access-token').value;await api('state');sessionStorage.setItem('cjd-token',token);$('access-token').value='';$('auth-dialog').close();await loadProfiles();await refresh();});
 window.addEventListener('beforeunload',e=>{if(dirty||firingDirty){e.preventDefault();e.returnValue='';}});
-window.addEventListener('hashchange',safe(async()=>{const next=location.hash.slice(1);if(['curves','control','history'].includes(next)&&next!==page)await navigate(next);}));
-async function init(){await refresh();try{await loadProfiles();const initial=location.hash.slice(1);if(['curves','history'].includes(initial))await navigate(initial);}catch(e){if(!$('auth-dialog').open)toast(e.message,true);}async function tick(){await refresh();if(page==='history'){try{await loadHistory();await refreshOpenFiring();}catch{}}setTimeout(tick,2000);}setTimeout(tick,2000);}
+window.addEventListener('hashchange',safe(async()=>{const next=location.hash.slice(1);if(pages.includes(next)&&next!==page)await navigate(next);}));
+async function init(){await refresh();try{await loadProfiles();const initial=location.hash.slice(1);if(pages.includes(initial))await navigate(initial);}catch(e){if(!$('auth-dialog').open)toast(e.message,true);}let nextEvents=performance.now()+2000;
+ function refreshDelay(){
+  return page==='control'&&state.mode==='simulator'&&state.online&&state.state===1?500:2000;
+ }
+ async function tick(){
+  const events=performance.now()>=nextEvents;
+  if(events)nextEvents=performance.now()+2000;
+  await refresh({events});
+  if(page==='history'){try{await loadHistory();await refreshOpenFiring();}catch{}}
+  setTimeout(tick,refreshDelay());
+ }
+ setTimeout(tick,refreshDelay());}
 setInterval(renderSegmentTime,1000);
 init();

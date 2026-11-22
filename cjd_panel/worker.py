@@ -92,7 +92,8 @@ class Worker:
                         self._poll(refresh_memories=False)
                     except Exception as exc:
                         self._offline(exc)
-                    next_poll = time.monotonic() + self.interval
+                    interval = min(self.interval, 0.25) if self.mode == "simulator" else self.interval
+                    next_poll = time.monotonic() + interval
                 self._start_if_due()
                 try:
                     operation, data, future, origin, deadline, guard, generation = self.queue.get(timeout=0.05)

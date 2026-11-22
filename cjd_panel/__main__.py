@@ -25,7 +25,7 @@ def main():
     parser.add_argument("--port", type=int)
     parser.add_argument("--no-auth", action="store_true", help="Permitir acceso sin contraseña, también por LAN")
     parser.add_argument("--data-dir", type=Path)
-    parser.add_argument("--segment-seconds", type=float, default=10, help="Duración real de cada tramo simulado")
+    parser.add_argument("--segment-seconds", type=float, default=30, help="Duración real de cada tramo simulado")
     parser.add_argument('--mqtt-config', type=Path, help='Archivo privado MQTT opcional')
     parser.add_argument('--no-mqtt', action='store_true', help='Desactivar MQTT y usar solo el panel local')
     parser.add_argument('--modbus-config',type=Path,help='Configuración serie opcional; por defecto /dev/ttyUSB1, 9600 8N2, dirección 1')
