@@ -101,6 +101,7 @@ function renderState(){
   else toast('Programa actualizado. Guarda tus cambios y recarga el panel.');
  }
  const physical=state.mode==='physical';
+ document.querySelector('.topbar').classList.toggle('simulator-mode',state.mode==='simulator');
  $('connection').textContent=online?'MODBUS · Conectado':state.server_unavailable?'MODBUS · Desconocido':state.communication_status==='connecting'?'MODBUS · Conectando':'MODBUS · Desconectado';
  $('connection').className='connection '+(online?'online':state.communication_status==='connecting'?'pending':'offline');
  $('connection').title=physical?(state.port||''):'Adaptador del simulador';

@@ -86,9 +86,12 @@ class Application:
             if method != "GET":
                 return self.error(405, "Método no permitido.")
             filename = "index.html" if path == "/" else path.removeprefix("/")
-            if filename not in {"index.html", "app.js", "style.css"}:
+            if filename not in {"index.html", "app.js", "style.css", "logo-cjd.png"}:
                 raise KeyError("Recurso no encontrado.")
-            return 200, [("Content-Type", mimetypes.guess_type(filename)[0] + "; charset=utf-8")], (STATIC / filename).read_bytes()
+            content_type = mimetypes.guess_type(filename)[0]
+            if filename != "logo-cjd.png":
+                content_type += "; charset=utf-8"
+            return 200, [("Content-Type", content_type)], (STATIC / filename).read_bytes()
         if self.token or self.password_verifier:
             candidate=supplied_password(env.get('HTTP_AUTHORIZATION',''))
             authorized=(self.password_verifier.verify(candidate) if self.password_verifier else
