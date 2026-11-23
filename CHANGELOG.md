@@ -1,6 +1,11 @@
 # Cambios del producto
 
-## 0.7.14
+## 0.7.15
+
+- Guías de ayuda integradas para Mis curvas, Control del horno y Mis cocciones.
+- Actualización de la cabecera y sincronización de los mandos del panel con el estado del programador.
+
+## 0.7.14 — referencia histórica, sustituida
 
 - El eje de tiempo de las gráficas termina en la duración de la serie visible más larga, sin redondear al siguiente intervalo.
 
