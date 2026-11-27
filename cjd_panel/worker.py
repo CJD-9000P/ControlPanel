@@ -34,6 +34,7 @@ class Worker:
         self.scheduled = None
         self.recent = deque(maxlen=600)
         self.segment_run_seconds = {}
+        self.completed_memory = None
         self.active = None
         self.command_origin = "app"
         self.command_deadline = None
@@ -64,7 +65,8 @@ class Worker:
             age = None if self.last_success is None else max(0, time.monotonic()-self.last_success)
             result = copy.deepcopy({**self.state, "memories": self.memories,
                                     "recent": list(self.recent), "active_firing": self.active,
-                                    "segment_run_seconds": self.segment_run_seconds})
+                                    "segment_run_seconds": self.segment_run_seconds,
+                                    "completed_memory": self.completed_memory})
             status = 'online' if result['online'] else 'offline' if self.offline_reported else 'connecting'
             if result['online'] and (not self.thread.is_alive() or age is None or age > self.freshness_limit):
                 result.update(online=False, error='Sin lecturas recientes confirmadas; control bloqueado.')
@@ -174,8 +176,12 @@ class Worker:
         if not self.state.get("online"):
             self.store.event("online", "observed", "Comunicación y cuatro memorias sincronizadas.", self.active)
         with self.lock:
+            if self.completed_memory is not None and (
+                    self.memories.get(self.completed_memory) != memories.get(self.completed_memory)):
+                self.completed_memory = None
             if s["state"] in (1, 2) and not self.active:
                 self.segment_run_seconds.clear()
+                self.completed_memory = None
                 self.active = self.store.start(name or f"Memoria {memory}", memory, memories[memory], origin, mode=self.mode)
                 self.store.event("started", origin, "Cocción observada y registrada.", self.active)
             if self.previous is not None and s["state"] != self.previous:
@@ -196,6 +202,11 @@ class Worker:
                         seconds[step] = seconds.get(step, 0) + elapsed
                 self.store.record(self.active, s)
                 if s["state"] == 0:
+                    completed = getattr(self.adapter, "program_completed", None)
+                    if previous.get("memory") == memory and (
+                            s["step"] == 20 or (completed and completed(
+                                sum(segment["minutes"] for segment in memories[memory])))):
+                        self.completed_memory = memory
                     self.store.finish(self.active)
                     self.active = None
             self.previous = s["state"]
@@ -352,6 +363,7 @@ class Worker:
             self.memories = {}
             self.recent.clear()
             self.segment_run_seconds.clear()
+            self.completed_memory = None
             self.previous = self.last_success = None
             self.offline_reported = False
             self.freshness_limit = max(10,self.interval*3+getattr(adapter,'timeout',.8)*10+6)

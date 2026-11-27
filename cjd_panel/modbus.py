@@ -34,6 +34,11 @@ class SimulatedRTU:
         self.thread = threading.Thread(target=self._serve, name="simulador-rtu", daemon=True)
         self.thread.start()
 
+    def program_completed(self, programmed_minutes):
+        # The simulator keeps the last segment at STOP, even on natural completion.
+        return (programmed_minutes > 0
+                and self.furnace.virtual_seconds_total + 1e-6 >= programmed_minutes * 60)
+
     def _serve(self):
         previous = time.monotonic()
         while not self.stop_event.is_set():

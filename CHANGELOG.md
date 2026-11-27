@@ -1,6 +1,10 @@
 # Cambios del producto
 
-## 0.7.16
+## 0.7.17
+
+- El punto final de la gráfica y la fila del último tramo se muestran en verde cuando se confirma el fin de la cocción. Una parada manual conserva el último avance observado.
+
+## 0.7.16 — referencia histórica, sustituida
 
 - Vista compacta `/movil` con las tres pestañas siempre visibles al desplazarse.
 - Hora local del dispositivo en los avisos de inicio programado de Actividad reciente.

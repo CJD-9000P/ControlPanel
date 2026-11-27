@@ -204,10 +204,11 @@ function renderProgram(){
  const active=state.online&&[1,2].includes(state.state);const memory=active?state.memory:Number($('run-memory').value)||state.memory;
  const source=state.memories?.[memory];if(!source){$('program-chart').innerHTML='<div class="empty">Esperando el programa de las memorias.</div>';$('control-segments').innerHTML='';return;}
  const sameJourney=journey.memory===memory;
- const segments=active||sameJourney?source:previewSegments(source);
+ const completed=state.online&&!active&&state.completed_memory===memory;
+ const segments=active||completed||sameJourney?source:previewSegments(source);
  const points=curvePoints(segments);const m=matches(source);
  $('program-title').textContent=`Memoria ${memory}${m.length?' · '+m.map(p=>p.name).join(' / '):''}`;
- $('program-summary').textContent=metrics(source)+(active?' · programa activo':sameJourney?' · último recorrido observado':' · vista previa; C01 será PV');
+ $('program-summary').textContent=metrics(source)+(active?' · programa activo':completed?' · programa completado':sameJourney?' · último recorrido observado':' · vista previa; C01 será PV');
  const rawStep=state.step;
  let fraction=0;
  if(active&&rawStep>=1&&rawStep<=19){const start=source[rawStep-1].temperature,end=source[rawStep].temperature,t=source[rawStep-1].minutes;fraction=end!==start?(state.sv-start)/(end-start):t>0?state.minutes/t:0;fraction=Math.max(0,Math.min(1,fraction));
@@ -218,7 +219,9 @@ function renderProgram(){
  const confirmed=journey;
  const drawProgress=fraction=>{
   const series=[{color:'#b46d68',points,nodes:true}];
-  if(state.online&&confirmed.memory===memory&&confirmed.step>0&&points.length>1){
+  if(completed&&points.length>1){
+   series.push({color:colors[0],points,dot:colors[0],width:3});
+  }else if(state.online&&confirmed.memory===memory&&confirmed.step>0&&points.length>1){
    const i=Math.min(points.length-2,confirmed.step-1),from=points[i],to=points[i+1];
    const dot=[from[0]+(to[0]-from[0])*fraction,from[1]+(to[1]-from[1])*fraction];
    series.push({color:colors[0],points:[...points.slice(0,i+1),dot],dot:colors[1],width:3});
@@ -243,7 +246,9 @@ function renderProgram(){
  document.querySelectorAll('[data-control-step]').forEach(row=>{const n=Number(row.dataset.controlStep);
   const elapsed=state.segment_run_seconds?.[memory]?.[n];
   row.querySelector('[data-run-duration]').textContent=Number.isFinite(elapsed)?shortDuration(elapsed):'—';
-  row.classList.toggle('segment-active',active&&n===rawStep);row.classList.toggle('segment-completed',state.online&&journey.memory===memory&&n<journey.step);if(active&&n===rawStep)row.setAttribute('aria-current','step');else row.removeAttribute('aria-current');});
+  row.classList.toggle('segment-active',active&&n===rawStep);
+  row.classList.toggle('segment-completed',completed?source[n-1].minutes>0:state.online&&journey.memory===memory&&n<journey.step);
+  if(active&&n===rawStep)row.setAttribute('aria-current','step');else row.removeAttribute('aria-current');});
  $('segment-target').textContent=active&&rawStep<=19?`Objetivo: ${source[rawStep].temperature} °C`:'Sin tramo activo';
  $('progress-method').textContent=!state.online?'Sin comunicación: el avance no está confirmado.':active?'Avance visual calculado con SV en rampas y CCH en mesetas; no mide la temperatura de la pieza.':'';
 }
