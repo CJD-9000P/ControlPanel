@@ -4,6 +4,14 @@ Aplicación Python para gestionar curvas y supervisar cocciones del CJD-9000P me
 
 El modo local no necesita Internet ni Home Assistant. MQTT es opcional y usa su [configuración privada](docs/MQTT.md). El adaptador USB incorpora dependencias opcionales y parámetros del comunicador recuperado: [configuración, pruebas y alcance físico](docs/MODBUS_USB.md). Las pruebas de desarrollo usan PTY del simulador, no el horno real.
 
+## Uso y limitaciones
+
+La aplicación Android permite consultar remotamente el estado del horno. Las notificaciones pueden retrasarse o perderse. Comprueba siempre el estado del horno directamente en su programador.
+
+La aplicación Android y el servidor Python se proporcionan tal cual y su instalación y uso son responsabilidad de quien los utilice. El autor no asume responsabilidad por daños derivados de su instalación o uso, en la medida permitida por la ley. Se mantienen los derechos y las responsabilidades que la ley no permite excluir.
+
+La app Android puede buscar una versión nueva en **Acerca de → Buscar actualización**. La instalación requiere confirmación en Android.
+
 ## Instalador
 
 El lanzador `bin/instalar-cjd.sh` permite descargar e instalar la versión publicada; `--check` comprueba requisitos sin modificar el sistema. Consulta el [comando de una línea y la generación por versión](INSTALLACION.md#lanzador-descargable-y-requisitos-mínimos).
