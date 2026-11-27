@@ -200,7 +200,10 @@ class PhysicalRTU:
                 raise CommunicationError('Número de registros Modbus incorrecto.')
             return [value-65536 if value & 0x8000 else value for value in response.registers]
         except Exception as exc:
-            self.last_error = f'Lectura Modbus fallida: {exc}'
+            detail = str(exc)
+            if 'No response received after ' in detail:
+                detail = 'El programador no responde por RS485. El panel seguirá intentando leer su estado.'
+            self.last_error = f'Lectura Modbus fallida: {detail}'
             self._close_port()
             self.next_attempt = time.monotonic()+self.config.reconnect_seconds
             raise CommunicationError(self.last_error) from None

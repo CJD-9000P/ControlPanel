@@ -1,6 +1,10 @@
 # Cambios del producto
 
-## 0.7.18
+## 0.7.19
+
+- Mensaje en español cuando el programador no responde a una lectura por RS485.
+
+## 0.7.18 — referencia histórica, sustituida
 
 - Consulta ligera para la vigilancia Android y menor frecuencia de actualización del historial web.
 - Exportaciones CSV y copias SQLite servidas en bloques, con el formato y las fechas UTC conservados.

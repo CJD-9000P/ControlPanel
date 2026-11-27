@@ -67,6 +67,16 @@ class SerialPTYTest(unittest.TestCase):
         self.assertEqual(self.physical.read(0xCA),[1])
         self.assertEqual(len([x for x in self.sim.furnace.write_log if x[0]==0xC4 and x[1]==[1]]),1)
 
+    def test_read_timeout_explains_loss_of_response_in_spanish(self):
+        self.assertEqual(self.physical.read(0xCA), [0])
+        self.sim.simulate('offline')
+        with self.assertRaisesRegex(CommunicationError, 'El programador no responde por RS485') as result:
+            self.physical.read(0xCA)
+        self.assertNotIn('retries', str(result.exception))
+        self.sim.simulate('online')
+        self.assertEqual(self.physical.read(0xCA), [0])
+        self.assertEqual(self.sim.furnace.write_log, [])
+
     def test_settle_delay_does_not_claim_valid_reading(self):
         self.physical.config=replace(self.config,settle_seconds=.15)
         with self.assertRaisesRegex(CommunicationError,'estabilización'):self.physical.read(0xCA)
