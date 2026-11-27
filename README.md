@@ -8,7 +8,7 @@ El modo local no necesita Internet ni Home Assistant. MQTT es opcional y usa su 
 
 La aplicación Android permite consultar remotamente el estado del horno. Las notificaciones pueden retrasarse o perderse. Comprueba siempre el estado del horno directamente en su programador.
 
-La aplicación Android y el servidor Python se proporcionan tal cual y su instalación y uso son responsabilidad de quien los utilice. El autor no asume responsabilidad por daños derivados de su instalación o uso, en la medida permitida por la ley. Se mantienen los derechos y las responsabilidades que la ley no permite excluir.
+La aplicación Android y el servidor Python se proporcionan tal cual y su instalación y uso son responsabilidad de quien los utilice. El autor no asume responsabilidad por daños derivados de su instalación o uso.
 
 La app Android puede buscar una versión nueva en **Acerca de → Buscar actualización**. La instalación requiere confirmación en Android.
 
