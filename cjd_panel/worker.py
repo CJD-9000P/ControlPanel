@@ -33,6 +33,7 @@ class Worker:
         self.memories = {}
         self.scheduled = None
         self.recent = deque(maxlen=600)
+        self.segment_run_seconds = {}
         self.active = None
         self.command_origin = "app"
         self.command_deadline = None
@@ -62,7 +63,8 @@ class Worker:
         with self.lock:
             age = None if self.last_success is None else max(0, time.monotonic()-self.last_success)
             result = copy.deepcopy({**self.state, "memories": self.memories,
-                                    "recent": list(self.recent), "active_firing": self.active})
+                                    "recent": list(self.recent), "active_firing": self.active,
+                                    "segment_run_seconds": self.segment_run_seconds})
             status = 'online' if result['online'] else 'offline' if self.offline_reported else 'connecting'
             if result['online'] and (not self.thread.is_alive() or age is None or age > self.freshness_limit):
                 result.update(online=False, error='Sin lecturas recientes confirmadas; control bloqueado.')
@@ -173,18 +175,32 @@ class Worker:
             self.store.event("online", "observed", "Comunicación y cuatro memorias sincronizadas.", self.active)
         with self.lock:
             if s["state"] in (1, 2) and not self.active:
+                self.segment_run_seconds.clear()
                 self.active = self.store.start(name or f"Memoria {memory}", memory, memories[memory], origin, mode=self.mode)
                 self.store.event("started", origin, "Cocción observada y registrada.", self.active)
             if self.previous is not None and s["state"] != self.previous:
                 self.store.event("state", origin, f"Estado confirmado: {['PARADO','FUNCIONANDO','PAUSADO'][s['state']]}", self.active)
+            now = time.monotonic()
             if self.active:
+                previous = self.state
+                seconds = self.segment_run_seconds.setdefault(memory, {})
+                if s["state"] == 1:
+                    seconds.setdefault(s["step"], 0)
+                if (previous.get("online") and self.last_success is not None
+                    and previous.get("state") == 1 and s["state"] in (0, 1)
+                    and previous["memory"] == memory):
+                    elapsed = now - self.last_success
+                    if 0 < elapsed <= 5:
+                        # The next confirmed sample closes the previously observed running interval.
+                        step = previous["step"]
+                        seconds[step] = seconds.get(step, 0) + elapsed
                 self.store.record(self.active, s)
                 if s["state"] == 0:
                     self.store.finish(self.active)
                     self.active = None
             self.previous = s["state"]
             self.state, self.memories = s, memories
-            self.last_success = time.monotonic()
+            self.last_success = now
             self.offline_reported = False
             self.recent.append(s)
         return s
@@ -335,6 +351,7 @@ class Worker:
             self.state = dict(online=False,mode=mode,error='Conectando con el programador…')
             self.memories = {}
             self.recent.clear()
+            self.segment_run_seconds.clear()
             self.previous = self.last_success = None
             self.offline_reported = False
             self.freshness_limit = max(10,self.interval*3+getattr(adapter,'timeout',.8)*10+6)

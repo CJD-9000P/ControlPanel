@@ -97,6 +97,26 @@ main {padding-top:10px}
   max-width: none;
 }
 
+.compact-panel .topbar {
+  position: sticky;
+}
+
+.compact-panel .topbar > .brand,
+.compact-panel .topbar > .connection-statuses {
+  display: none;
+}
+
+.compact-panel .topbar nav {
+  flex: 1 1 100%;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.compact-panel .topbar .nav {
+  flex: 1 1 0;
+  white-space: normal;
+}
+
 .topbar.simulator-mode {
   border-bottom: 4px solid var(--red);
 }
@@ -195,3 +215,19 @@ footer > a {
 }
 .help-guide h1 { margin-top: 0; }
 .help-guide li + li { margin-top: 8px; }
+
+.control-segment-table {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.control-segment-table table {table-layout: fixed}
+.control-segment-table th,
+.control-segment-table td {
+  padding: 8px clamp(3px, 1vw, 12px);
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.control-segment-table th {position: static}
+.control-segment-table th:first-child {width: 13%}
+.control-segment-table td {font-variant-numeric: tabular-nums}
+#more-events {margin-top: 12px}

@@ -125,7 +125,6 @@ function renderState(){
  connectionMode.disabled=busy||!!state.server_unavailable||!state.physical_usb_supported||!!state.active_firing||[1,2].includes(state.state);
  $('mode-label').textContent=physical?'':'SIMULADOR AISLADO';$('mode-label').hidden=physical;
  $('mode-description').parentElement.hidden=physical;
- $('simulator-tools').hidden=physical;
  document.querySelectorAll('[data-sim]').forEach(b=>b.disabled=busy||physical);
  if(lastModeGeneration!==null&&lastModeGeneration!==state.mode_generation){$('run-memory').value='';journey={memory:null,step:0,fraction:0,active:null};lastControlMemoryKey=lastMemoryKey=lastTableKey='';}
  lastModeGeneration=state.mode_generation;
@@ -193,6 +192,11 @@ function renderSegmentTime(){
  caption.textContent=`${fmt(percent,0)} % · segundos estimados`;
  progress.setAttribute('aria-valuetext',total>0?caption.textContent:'Sin duración programada');
 }
+function shortDuration(seconds){
+ if(seconds>0&&seconds<1)return '<1 s';
+ const total=Math.floor(seconds), hours=Math.floor(total/3600), minutes=Math.floor(total%3600/60);
+ return [hours?hours+' h':'',hours||minutes?minutes+' min':'',total%60+' s'].filter(Boolean).join(' ');
+}
 let programFrame = 0;
 function renderProgram(){
  cancelAnimationFrame(programFrame);
@@ -234,16 +238,53 @@ function renderProgram(){
   };
   programFrame=requestAnimationFrame(frame);
  }else drawProgress(confirmed.fraction);
- const key=JSON.stringify([memory,source]);if(key!==lastTableKey){$('control-segments').innerHTML=source.slice(0,19).map((s,i)=>`<tr data-control-step="${i+1}"><td>${i+1}</td><td>${i===0?'C01 · ':''}<span data-control-start="${i}">${fmt(segments[i].temperature,0)}</span> °C</td><td>${s.minutes} min</td><td>${source[i+1].temperature} °C</td></tr>`).join('');lastTableKey=key;}
+ const key=JSON.stringify([memory,source]);if(key!==lastTableKey){$('control-segments').innerHTML=source.slice(0,19).map((s,i)=>`<tr data-control-step="${i+1}"><td>${i+1}</td><td>${i===0?'C01 · ':''}<span data-control-start="${i}">${fmt(segments[i].temperature,0)}</span> °C</td><td>${s.minutes} min</td><td data-run-duration>—</td><td>${source[i+1].temperature} °C</td></tr>`).join('');lastTableKey=key;}
  const initial=document.querySelector('[data-control-start="0"]');if(initial)initial.textContent=fmt(segments[0].temperature,0);
- document.querySelectorAll('[data-control-step]').forEach(row=>{const n=Number(row.dataset.controlStep);row.classList.toggle('segment-active',active&&n===rawStep);row.classList.toggle('segment-completed',state.online&&journey.memory===memory&&n<journey.step);if(active&&n===rawStep)row.setAttribute('aria-current','step');else row.removeAttribute('aria-current');});
+ document.querySelectorAll('[data-control-step]').forEach(row=>{const n=Number(row.dataset.controlStep);
+  const elapsed=state.segment_run_seconds?.[memory]?.[n];
+  row.querySelector('[data-run-duration]').textContent=Number.isFinite(elapsed)?shortDuration(elapsed):'—';
+  row.classList.toggle('segment-active',active&&n===rawStep);row.classList.toggle('segment-completed',state.online&&journey.memory===memory&&n<journey.step);if(active&&n===rawStep)row.setAttribute('aria-current','step');else row.removeAttribute('aria-current');});
  $('segment-target').textContent=active&&rawStep<=19?`Objetivo: ${source[rawStep].temperature} °C`:'Sin tramo activo';
  $('progress-method').textContent=!state.online?'Sin comunicación: el avance no está confirmado.':active?'Avance visual calculado con SV en rampas y CCH en mesetas; no mide la temperatura de la pieza.':'';
 }
 function updatePhysicalBadges(){document.querySelectorAll('[data-match-profile]').forEach(el=>{const p=profiles.find(p=>p.id===el.dataset.matchProfile);if(!p)return;const ids=state.online?Object.entries(state.memories||{}).filter(([,s])=>matches(s).some(m=>m.id===p.id)).map(([id])=>id):[];el.textContent=!state.online?'Memorias sin confirmar':ids.length?'Coincide con '+(ids.length===1?'memoria ':'memorias ')+ids.join(', ')+' del programador':'Solo en biblioteca';});}
-function renderEvents(target,events,limit=15){const origins={app:'Aplicación',mqtt:'Home Assistant',observed:'Observado',system:'Sistema',import:'Importado'};target.innerHTML=events.length?events.slice(0,limit).map(e=>`<div class="event-row"><time>${escapeHTML(date(e.timestamp))}</time><span>${escapeHTML(e.message)}</span><span class="event-origin">${origins[e.origin]||escapeHTML(e.origin)}</span></div>`).join(''):'<div class="empty">Sin eventos registrados.</div>';}
+function eventMessage(event) {
+ if(event.kind!=='scheduled_start')return event.message;
+ return event.message.replace(/\((\d{4}-\d{2}-\d{2}T[^)]+)\)\.$/, (original, stamp)=>
+  Number.isFinite(Date.parse(stamp))?`(${date(stamp)}).`:original);
+}
+function renderEvents(target,events,limit=15){const origins={app:'Aplicación',mqtt:'Home Assistant',observed:'Observado',system:'Sistema',import:'Importado'};target.innerHTML=events.length?events.slice(0,limit).map(e=>`<div class="event-row"><time>${escapeHTML(date(e.timestamp))}</time><span>${escapeHTML(eventMessage(e))}</span><span class="event-origin">${origins[e.origin]||escapeHTML(e.origin)}</span></div>`).join(''):'<div class="empty">Sin eventos registrados.</div>';}
+const activityPageSize=15, eventBatchSize=100;
+let activity=[], activityLimit=activityPageSize, moreActivity=true;
+function mergeActivity(events){
+ const byId=new Map(activity.map(event=>[event.id,event]));
+ for(const event of events)byId.set(event.id,event);
+ activity=[...byId.values()].sort((a,b)=>b.id-a.id);
+}
+function renderActivity(){
+ renderEvents($('events'),activity,activityLimit);
+ $('more-events').hidden=activityLimit>=activity.length&&!moreActivity;
+}
+$('more-events').onclick=safe(async()=>{
+ const button=$('more-events');
+ button.disabled=true;
+ try{
+  if(activityLimit+activityPageSize>activity.length&&moreActivity&&activity.length){
+   const older=await api('events?before='+activity.at(-1).id);
+   moreActivity=older.length===eventBatchSize;
+   mergeActivity(older);
+  }
+  activityLimit+=activityPageSize;
+  renderActivity();
+ }finally{button.disabled=false;}
+});
 async function refresh({events=true}={}){try{state=await api('state');renderState();}catch(e){state={...state,online:false,server_unavailable:true,error:'Sin comunicación con el servidor local: '+e.message};renderState();return;}
- if(events&&page==='control'){try{renderEvents($('events'),await api('events'));}catch(e){$('events').textContent='No se pudo actualizar la actividad: '+e.message;}}
+ if(events&&page==='control'){try{
+  const latest=await api('events');
+  if(!activity.length)moreActivity=latest.length===eventBatchSize;
+  mergeActivity(latest);
+  renderActivity();
+ }catch(e){$('events').textContent='No se pudo actualizar la actividad: '+e.message;}}
 }
 function commandNotification(operation,extra,result){
  switch(operation){
@@ -463,7 +504,6 @@ async function prepareFiring(){
 $('run').onclick=safe(prepareFiring);
 $('pause').onclick=safe(()=>command('pause'));$('resume').onclick=safe(()=>command('resume'));
 $('stop').onclick=safe(async()=>{if(await confirmAction('Parar la cocción','Se enviara la orden que detiene la cocción, ¿esta segur@?'))await command('stop');});
-for(const b of document.querySelectorAll('[data-sim]'))b.onclick=safe(()=>command('simulate',{action:b.dataset.sim}));
 $('new-profile').onclick=safe(()=>editProfile({name:'',notes:'',segments:Array.from({length:20},(_,i)=>({temperature:i?100:state.online?state.pv:0,minutes:i===0?10:0}))}));
 $('profile-search').oninput=renderProfileList;
 $('profile-list').onclick=safe(async e=>{const b=e.target.closest('[data-profile-action]');if(!b)return;const p=profiles.find(p=>p.id===b.dataset.id);if(!p)throw Error('Curva no disponible.');switch(b.dataset.profileAction){case'edit':await editProfile(p,p.id);break;case'load':openLoad(p);break;case'duplicate':{const copy=await api('profiles',{method:'POST',body:{...p,name:(p.name+' · copia').slice(0,120)}});await loadProfiles();toast('Curva duplicada: '+copy.name);break;}case'delete':if(await confirmAction('Eliminar '+p.name,'Se eliminará la curva de la biblioteca.')){await api('profiles/'+p.id,{method:'DELETE'});await loadProfiles();toast('Curva eliminada.');}break;}});

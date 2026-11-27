@@ -1,8 +1,8 @@
 #!/bin/sh
 # Generado por packaging/generate_launcher.py; editar la plantilla, no este archivo.
-# CJD_LAUNCHER_VERSION=0.7.15
+# CJD_LAUNCHER_VERSION=0.7.16
 set -eu
-CJD_VERSION='0.7.15'
+CJD_VERSION='0.7.16'
 case "${1:-}" in
     --version) printf '%s\n' "$CJD_VERSION"; exit 0;;
     --check|'') ;;

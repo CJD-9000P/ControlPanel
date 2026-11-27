@@ -9,7 +9,7 @@ import json
 import mimetypes
 from pathlib import Path
 import tempfile
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 import uuid
 from wsgiref.simple_server import make_server, WSGIServer
 from socketserver import ThreadingMixIn
@@ -85,13 +85,17 @@ class Application:
         if not path.startswith("/api/"):
             if method != "GET":
                 return self.error(405, "Método no permitido.")
-            filename = "index.html" if path == "/" else path.removeprefix("/")
+            compact = path in {"/movil", "/movil/"}
+            filename = "index.html" if path == "/" or compact else path.removeprefix("/")
             if filename not in {"index.html", "app.js", "style.css", "logo-cjd.png"}:
                 raise KeyError("Recurso no encontrado.")
             content_type = mimetypes.guess_type(filename)[0]
             if filename != "logo-cjd.png":
                 content_type += "; charset=utf-8"
-            return 200, [("Content-Type", content_type)], (STATIC / filename).read_bytes()
+            body = (STATIC / filename).read_bytes()
+            if compact:
+                body = body.replace(b"<body>", b'<body class="compact-panel">', 1)
+            return 200, [("Content-Type", content_type)], body
         if self.token or self.password_verifier:
             candidate=supplied_password(env.get('HTTP_AUTHORIZATION',''))
             authorized=(self.password_verifier.verify(candidate) if self.password_verifier else
@@ -136,7 +140,9 @@ class Application:
             self.updater.start(data.get('version'))
             return self.json({'message': 'Preparando la actualización del programa.'})
         if path == "/api/events" and method == "GET":
-            return self.json(self.store.events())
+            cursor = parse_qs(env.get("QUERY_STRING", ""), keep_blank_values=True).get("before")
+            before = None if cursor is None else integer(int(cursor[0]), "Evento", 1, 2**63-1)
+            return self.json(self.store.events(before=before))
         if path == "/api/profiles":
             if method == "GET":
                 return self.json(self.store.profiles())

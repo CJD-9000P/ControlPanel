@@ -1,6 +1,13 @@
 # Cambios del producto
 
-## 0.7.15
+## 0.7.16
+
+- Vista compacta `/movil` con las tres pestañas siempre visibles al desplazarse.
+- Hora local del dispositivo en los avisos de inicio programado de Actividad reciente.
+- Tabla de tramos sin desplazamiento interno, con duración programada y tiempo real observado en marcha.
+- Paginación de Actividad reciente desde SQLite y retirada de los mandos de prueba del simulador de la interfaz web.
+
+## 0.7.15 — referencia histórica, sustituida
 
 - Guías de ayuda integradas para Mis curvas, Control del horno y Mis cocciones.
 - Actualización de la cabecera y sincronización de los mandos del panel con el estado del programador.

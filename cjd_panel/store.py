@@ -117,10 +117,12 @@ class Store:
             self.db.execute("INSERT INTO events(firing_id,timestamp,kind,origin,message) VALUES(?,?,?,?,?)",
                             (firing, utcnow(), kind, origin, message))
 
-    def events(self, firing=None):
+    def events(self, firing=None, *, before=None):
         with self.lock:
             if firing:
                 rows = self.db.execute("SELECT * FROM events WHERE firing_id=? ORDER BY id DESC", (firing,))
+            elif before is not None:
+                rows = self.db.execute("SELECT * FROM events WHERE id<? ORDER BY id DESC LIMIT 100", (before,))
             else:
                 rows = self.db.execute("SELECT * FROM events ORDER BY id DESC LIMIT 100")
             return [dict(r) for r in rows]
