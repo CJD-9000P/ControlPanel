@@ -95,7 +95,7 @@ Sin paquetes nuevos del producto. El instalador utiliza únicamente biblioteca e
 
 ## Instalación asistida actual
 
-La versión del producto deriva exclusivamente de `cjd_panel/__init__.py`. `instalar.sh` y `scripts/install.py` preparan `.venv`, SQLite y HTTP WSGI estándar, configuración privada, contraseña PBKDF2-SHA256 y servicio opcional. Detalles en [INSTALLACION.md](INSTALLACION.md). No se añade un servidor de base de datos externo.
+La versión del producto deriva exclusivamente de `cjd_panel/__init__.py`. `instalar.sh` y `scripts/install.py` preparan `.venv`, SQLite y HTTP WSGI estándar, configuración privada, contraseña PBKDF2-SHA256 y servicio opcional. Detalles en [INSTALLACION.md](../../INSTALLACION.md). No se añade un servidor de base de datos externo.
 
 Herramienta nueva: pip 26.3, solo instalación/empaquetado, Linux/Python >=3.11, fijado con SHA-256 en `requirements-bootstrap.txt` e `installer-wheels.json`. Se instala en `.venv` únicamente si se eligen dependencias opcionales. `venv`, `ssl`, `hashlib` y SQLite pertenecen a la biblioteca estándar Python ya requerida. apt/dnf y sudo son herramientas del anfitrión para paquetes base, no dependencias de ejecución del producto; sus versiones dependen de la distribución (pendiente de comprobar fuera de Debian). Las dependencias MQTT y Modbus mantienen sus versiones fijadas existentes.
 

@@ -1,6 +1,12 @@
 # Cambios del producto
 
-## 0.7.17
+## 0.7.18
+
+- Consulta ligera para la vigilancia Android y menor frecuencia de actualización del historial web.
+- Exportaciones CSV y copias SQLite servidas en bloques, con el formato y las fechas UTC conservados.
+- Documentación de instalación, uso remoto y Android reorganizada.
+
+## 0.7.17 — referencia histórica, sustituida
 
 - El punto final de la gráfica y la fila del último tramo se muestran en verde cuando se confirma el fin de la cocción. Una parada manual conserva el último avance observado.
 

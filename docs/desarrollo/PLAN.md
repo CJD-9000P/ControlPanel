@@ -100,13 +100,13 @@ Resultado actual: servicio de cjddev instalado, activo y habilitado; API comprob
 
 ## Instalación asistida actual
 
-La versión del producto deriva exclusivamente de `cjd_panel/__init__.py`. `instalar.sh` y `scripts/install.py` preparan `.venv`, SQLite y HTTP WSGI estándar, configuración privada, contraseña PBKDF2-SHA256 y servicio opcional. Detalles en [INSTALLACION.md](INSTALLACION.md). No se añade un servidor de base de datos externo.
+La versión del producto deriva exclusivamente de `cjd_panel/__init__.py`. `instalar.sh` y `scripts/install.py` preparan `.venv`, SQLite y HTTP WSGI estándar, configuración privada, contraseña PBKDF2-SHA256 y servicio opcional. Detalles en [INSTALLACION.md](../../INSTALLACION.md). No se añade un servidor de base de datos externo.
 
 Verificación actual del instalador: se han probado sockets HTTP reales fuera del sandbox en una carpeta temporal, con simulador, autenticación y dependencias completas. Las limitaciones de sockets descritas para la entrega inicial son históricas. No hay prueba visual en navegador ni instalación de paquetes apt/dnf en otras distribuciones.
 
 ## Destino Fedora
 
-Lanzador `instalar-fedora.sh` sobre el asistente común, DNF para paquetes base y preparación opcional del anfitrión mediante `scripts/fedora_setup.py`: grupo dialout y regla HTTP en zona firewalld elegida. Se conserva systemd de usuario con linger, SQLite y HTTP de Python. No se cambia SELinux ni se conecta el puerto serie durante la instalación. Fedora Atomic queda fuera de este procedimiento. Pruebas simuladas del anfitrión Fedora; instalación nativa y versión exacta del equipo final pendientes de comprobar. Véase [guía Fedora](docs/FEDORA.md).
+Lanzador `instalar-fedora.sh` sobre el asistente común, DNF para paquetes base y preparación opcional del anfitrión mediante `scripts/fedora_setup.py`: grupo dialout y regla HTTP en zona firewalld elegida. Se conserva systemd de usuario con linger, SQLite y HTTP de Python. No se cambia SELinux ni se conecta el puerto serie durante la instalación. Fedora Atomic queda fuera de este procedimiento. Pruebas simuladas del anfitrión Fedora; instalación nativa y versión exacta del equipo final pendientes de comprobar. Véase [guía Fedora](../FEDORA.md).
 
 ## Lanzador generado por versión
 

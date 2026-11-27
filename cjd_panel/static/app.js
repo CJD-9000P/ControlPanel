@@ -264,7 +264,10 @@ let activity=[], activityLimit=activityPageSize, moreActivity=true;
 function mergeActivity(events){
  const byId=new Map(activity.map(event=>[event.id,event]));
  for(const event of events)byId.set(event.id,event);
- activity=[...byId.values()].sort((a,b)=>b.id-a.id);
+ const merged=[...byId.values()].sort((a,b)=>b.id-a.id);
+ const limit=activityLimit+eventBatchSize;
+ if(merged.length>limit)moreActivity=true;
+ activity=merged.slice(0,limit);
 }
 function renderActivity(){
  renderEvents($('events'),activity,activityLimit);
@@ -544,16 +547,18 @@ $('csv-file').onchange=safe(async()=>{const file=$('csv-file').files[0];if(!file
 $('auth-form').onsubmit=safe(async e=>{e.preventDefault();token=$('access-token').value;await api('state');sessionStorage.setItem('cjd-token',token);$('access-token').value='';$('auth-dialog').close();await loadProfiles();await refresh();});
 window.addEventListener('beforeunload',e=>{if(dirty||firingDirty){e.preventDefault();e.returnValue='';}});
 window.addEventListener('hashchange',safe(async()=>{const next=location.hash.slice(1);if(pages.includes(next)&&next!==page)await navigate(next);}));
-async function init(){await refresh();try{await loadProfiles();const initial=location.hash.slice(1);if(pages.includes(initial))await navigate(initial);}catch(e){if(!$('auth-dialog').open)toast(e.message,true);}let nextEvents=performance.now()+2000;
+async function init(){await refresh();try{await loadProfiles();const initial=location.hash.slice(1);if(pages.includes(initial))await navigate(initial);}catch(e){if(!$('auth-dialog').open)toast(e.message,true);}let nextEvents=performance.now()+2000,nextHistory=0;
  function refreshDelay(){
   return page==='control'&&state.mode==='simulator'&&state.online&&state.state===1?500:2000;
  }
  async function tick(){
-  const events=performance.now()>=nextEvents;
-  if(events)nextEvents=performance.now()+2000;
-  await refresh({events});
-  if(page==='history'){try{await loadHistory();await refreshOpenFiring();}catch{}}
-  setTimeout(tick,refreshDelay());
+  try{
+   if(document.hidden)return;
+   const now=performance.now(), events=now>=nextEvents;
+   if(events)nextEvents=now+2000;
+   await refresh({events});
+   if(page==='history'&&now>=nextHistory){nextHistory=now+10000;try{await loadHistory();await refreshOpenFiring();}catch{}}
+  }finally{setTimeout(tick,document.hidden?10000:refreshDelay());}
  }
  setTimeout(tick,refreshDelay());}
 setInterval(renderSegmentTime,1000);

@@ -1,6 +1,6 @@
 """Persistencia transaccional SQLite; timestamps UTC y snapshots inmutables."""
 import json
-from contextlib import closing
+from contextlib import closing, contextmanager
 from pathlib import Path
 import sqlite3
 import threading
@@ -261,6 +261,17 @@ class Store:
             self.db.execute('DELETE FROM events WHERE firing_id=?', (ident,))
             self.db.execute('DELETE FROM firings WHERE id=?', (ident,))
 
+    @contextmanager
+    def firing_csv_rows(self, ident):
+        # A separate read transaction gives one consistent CSV snapshot without blocking the worker lock.
+        with closing(sqlite3.connect(self.path.resolve().as_uri() + "?mode=ro", uri=True)) as db:
+            db.row_factory = sqlite3.Row
+            db.execute("BEGIN")
+            if db.execute("SELECT 1 FROM firings WHERE id=?", (ident,)).fetchone() is None:
+                raise KeyError("Cocción no encontrada.")
+            yield (dict(row) for row in db.execute(
+                "SELECT timestamp,pv,sv,state,step,minutes,memory FROM readings WHERE firing_id=? ORDER BY id", (ident,)))
+
     def firing(self, ident, chart=False):
         with self.lock:
             row = self.db.execute("SELECT * FROM firings WHERE id=?", (ident,)).fetchone()
@@ -270,13 +281,11 @@ class Store:
             data["snapshot"] = json.loads(data["snapshot"])
             data['curve_key'] = curve_key(data['snapshot'])
             all_rows = [dict(r) for r in self.db.execute('SELECT * FROM readings WHERE firing_id=? ORDER BY id', (ident,))]
-            data['statistics'] = summarize(all_rows)
-            # Los huecos y marcas se calculan antes de reducir la gráfica.
-            total = len(all_rows)
-            data['readings'], data['timeline'] = chart_data(all_rows, reduced=chart)
             data["events"] = self.events(ident)
-            data["samples"] = total
-            return data
+        data["statistics"] = summarize(all_rows)
+        data["readings"], data["timeline"] = chart_data(all_rows, reduced=chart)
+        data["samples"] = len(all_rows)
+        return data
 
     def backup(self, destination):
         with self.lock:

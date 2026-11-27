@@ -60,13 +60,15 @@ class Worker:
             raise ValueError("Hay demasiadas órdenes pendientes.")
         return future
 
-    def snapshot(self):
+    def snapshot(self, *, compact=False):
         with self.lock:
             age = None if self.last_success is None else max(0, time.monotonic()-self.last_success)
             result = copy.deepcopy({**self.state, "memories": self.memories,
-                                    "recent": list(self.recent), "active_firing": self.active,
-                                    "segment_run_seconds": self.segment_run_seconds,
+                                    "active_firing": self.active,
                                     "completed_memory": self.completed_memory})
+            if not compact:
+                result.update(recent=copy.deepcopy(list(self.recent)),
+                              segment_run_seconds=copy.deepcopy(self.segment_run_seconds))
             status = 'online' if result['online'] else 'offline' if self.offline_reported else 'connecting'
             if result['online'] and (not self.thread.is_alive() or age is None or age > self.freshness_limit):
                 result.update(online=False, error='Sin lecturas recientes confirmadas; control bloqueado.')
@@ -79,7 +81,7 @@ class Worker:
                           }),
                           port=getattr(self.adapter, 'port', None),
                           configured_port=self.selected_port or self.default_port,
-                          serial_ports=self.serial_ports() if self.serial_ports else [])
+                          serial_ports=self.serial_ports() if self.serial_ports and not compact else [])
             pending = time.monotonic() < self.update_until
             result.update(update_pending=pending, update_idle=(
                 result['online'] and result.get('state') == 0 and self.active is None

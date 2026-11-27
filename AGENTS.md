@@ -29,7 +29,7 @@ La aplicación funciona sin Home Assistant, sin Internet y sin MQTT. MQTT podrá
 
 ## Referencia visual y funcional de la interfaz
 
-- Antes de implementar o rediseñar pantallas, leer `ESPECIFICACION_UI_PARA_CODEX.md`, revisar el manual PDF y las capturas renderizadas, y estudiar los tres archivos JS de tarjetas en `fuentes_referencia/tarjetas_homeassistant/`. El manual documenta la interfaz existente y sirve como referencia visual/funcional.
+- Antes de implementar o rediseñar pantallas, leer `docs/desarrollo/ESPECIFICACION_UI_PARA_CODEX.md`, revisar el manual PDF y las capturas renderizadas, y estudiar los tres archivos JS de tarjetas en `fuentes_referencia/tarjetas_homeassistant/`. El manual documenta la interfaz existente y sirve como referencia visual/funcional.
 - Mantener la organización reconocible de las tarjetas, la navegación y los flujos del manual (Mis curvas, Editar curva, Cargar curva, Control del horno y Mis cocciones). No omitir controles de cocción: Iniciar, Pausar, Reanudar y Parar deben estar visibles y su estado debe depender del estado real observado del programador. C01/C1 es la temperatura inicial real tomada de PV; mostrar también PV viva como temperatura actual.
 - La aplicación nueva es independiente de HA. Sustituir indicadores/avisos específicos de MQTT, Home Assistant y Telegram por estado de la conexión local con el CJD y funciones locales equivalentes. No convertirlos en requisitos.
 - Si el usuario ya tiene una versión nueva de la aplicación, pedir su código/capturas para comparar antes de rediseñar; el manual refleja la interfaz de octubre de 2026, no necesariamente el prototipo actual.
@@ -44,7 +44,7 @@ Separar estas responsabilidades:
 4. Persistencia local: SQLite como fuente principal; importación/exportación CSV.
 5. Integración opcional: MQTT, sin dependencia de HA ni de un broker.
 
-Mantener las capas independientes de la distribución Linux y preparar ejecución en Debian, Ubuntu y Fedora. Registrar decisiones de lenguaje, framework, servidor y empaquetado en `PLAN.md`, y dependencias en `DEPENDENCIAS.md`.
+Mantener las capas independientes de la distribución Linux y preparar ejecución en Debian, Ubuntu y Fedora. Registrar decisiones de lenguaje, framework, servidor y empaquetado en `docs/desarrollo/PLAN.md`, y dependencias en `docs/desarrollo/DEPENDENCIAS.md`.
 
 ## Curvas, comunicación e historial
 
@@ -71,7 +71,7 @@ En versiones nuevas del software, mantener una sola fuente de verdad de versión
 
 ## Dependencias reproducibles
 
-- Registrar cada dependencia y herramienta nueva en `DEPENDENCIAS.md`, con versión, función, plataforma y si es ejecución, desarrollo o empaquetado.
+- Registrar cada dependencia y herramienta nueva en `docs/desarrollo/DEPENDENCIAS.md`, con versión, función, plataforma y si es ejecución, desarrollo o empaquetado.
 - Mantener manifiestos y archivos de bloqueo cuando se elija el stack.
 - Diferenciar Codex CLI, Tailscale y herramientas del LXC de las dependencias del producto.
 - Preferir instrucciones de reemplazo completo de archivo cuando ayuden a evitar problemas de formato al usuario.

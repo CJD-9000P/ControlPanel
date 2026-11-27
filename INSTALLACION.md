@@ -1,4 +1,12 @@
-# Instalación asistida
+# Instalar el servidor Python de CJD Control Panel
+
+## Antes de empezar
+
+Para el horno real necesitas el **programador CJD‑9000P**, un **convertidor RS485–USB** y un **equipo Linux junto al programador**. Instala el servidor en ese equipo y conecta allí el adaptador. El simulador permite hacer una primera prueba sin equipo físico.
+
+Si solo vas a usar el navegador en el propio Linux, basta el acceso local. Si vas a usar otro navegador o Android, elige acceso por red y contraseña. El equipo remoto debe poder llegar al Linux. Para la app Android se recomienda añadir **`/movil`** a la dirección del panel. [Uso de Python](docs/USO_PYTHON.md) · [Instalación en Android](docs/ANDROID.md)
+
+## Asistente de instalación
 
 Desde la carpeta del paquete descomprimido, como usuario normal:
 

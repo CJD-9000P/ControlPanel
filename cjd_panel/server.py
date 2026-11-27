@@ -7,11 +7,13 @@ import io
 from ipaddress import ip_address
 import json
 import mimetypes
+import os
 from pathlib import Path
 import tempfile
 from urllib.parse import parse_qs, urlsplit
 import uuid
 from wsgiref.simple_server import make_server, WSGIServer
+from wsgiref.util import FileWrapper
 from socketserver import ThreadingMixIn
 from . import __version__
 from .auth import PasswordVerifier, supplied_password
@@ -54,12 +56,19 @@ class Application:
             import traceback
             traceback.print_exc()
             status, headers, body = self.error(500, "Error interno. Consulta el registro del servicio.")
-        headers += [("Content-Length", str(len(body))), ("Cache-Control", "no-store"),
+        streamed = not isinstance(body, bytes)
+        length = os.fstat(body.fileno()).st_size if streamed else len(body)
+        headers += [("Content-Length", str(length)), ("Cache-Control", "no-store"),
                     ("X-Content-Type-Options", "nosniff"),
                     ("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'none'"),
                     ("Referrer-Policy", "no-referrer")]
-        start_response(f"{status} { {200:'OK',201:'Created',400:'Bad Request',401:'Unauthorized',403:'Forbidden',404:'Not Found',405:'Method Not Allowed',413:'Payload Too Large',500:'Internal Server Error',503:'Service Unavailable',504:'Gateway Timeout'}.get(status,'Error')}", headers)
-        return [body]
+        try:
+            start_response(f"{status} { {200:'OK',201:'Created',400:'Bad Request',401:'Unauthorized',403:'Forbidden',404:'Not Found',405:'Method Not Allowed',413:'Payload Too Large',500:'Internal Server Error',503:'Service Unavailable',504:'Gateway Timeout'}.get(status,'Error')}", headers)
+        except BaseException:
+            if streamed:
+                body.close()
+            raise
+        return FileWrapper(body, 64 * 1024) if streamed else [body]
 
     @staticmethod
     def json(data, status=200):
@@ -128,9 +137,10 @@ class Application:
             )
         )
         if path == "/api/state" and method == "GET":
-            state = self.worker.snapshot()
+            compact = parse_qs(env.get("QUERY_STRING", "")).get("view") == ["monitor"]
+            state = self.worker.snapshot(compact=compact)
             return self.json({**state, "version": __version__,
-                "update": self.updater.snapshot(state) if updates_allowed else {},
+                "update": self.updater.snapshot(state) if updates_allowed and not compact else {},
                 "mqtt": self.mqtt_bridge.snapshot() if self.mqtt_bridge else {"enabled": False, "connected": False}})
         if path == "/api/update" and method == "POST":
             if not updates_allowed:
@@ -199,16 +209,29 @@ class Application:
             exporting = len(parts) == 4 and parts[3] == "csv"
             if len(parts) == 4 and not exporting:
                 raise KeyError("Recurso no encontrado.")
-            f = self.store.firing(ident, chart=not exporting)
             if exporting:
-                return self.download(csv_bytes(CSV_FIELDS, f["readings"]), f"coccion-{ident}.csv", "text/csv; charset=utf-8")
-            return self.json(f)
+                return self.export_firing_csv(ident)
+            return self.json(self.store.firing(ident, chart=True))
         if path == "/api/backup" and method == "GET":
             with tempfile.TemporaryDirectory() as directory:
                 dest = Path(directory) / "cjd.sqlite3"
                 self.store.backup(dest)
-                return self.download(dest.read_bytes(), "cjd-backup.sqlite3", "application/vnd.sqlite3")
+                return self.download(dest.open("rb"), "cjd-backup.sqlite3", "application/vnd.sqlite3")
         raise KeyError("Recurso o método no encontrado.")
+
+    def export_firing_csv(self, ident):
+        file = tempfile.TemporaryFile("w+b")
+        try:
+            with self.store.firing_csv_rows(ident) as rows, io.TextIOWrapper(
+                    os.fdopen(os.dup(file.fileno()), "wb"), encoding="utf-8-sig", newline="") as out:
+                writer = csv.DictWriter(out, fieldnames=CSV_FIELDS)
+                writer.writeheader()
+                writer.writerows(rows)
+            file.seek(0)
+            return self.download(file, f"coccion-{ident}.csv", "text/csv; charset=utf-8")
+        except BaseException:
+            file.close()
+            raise
 
     def import_firing(self, text):
         text = text.removeprefix("\ufeff")
@@ -255,6 +278,11 @@ class Application:
 
 class ThreadedServer(ThreadingMixIn, WSGIServer):
     daemon_threads = False
+
+    def get_request(self):
+        connection, peer = super().get_request()
+        connection.settimeout(30)
+        return connection, peer
 
 
 def serve(app, host, port):

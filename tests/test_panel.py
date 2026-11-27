@@ -55,10 +55,24 @@ class PanelTest(unittest.TestCase):
              'HTTP_X_CJD_REQUEST':'1',**(headers or {})}
         result={}
         def start(status, h): result.update(status=int(status.split()[0]),headers=dict(h))
-        result['body']=b''.join(self.app(env,start))
+        response = self.app(env, start)
+        try:
+            result['body'] = b''.join(response)
+        finally:
+            if hasattr(response, 'close'):
+                response.close()
         if 'application/json' in result['headers'].get('Content-Type',''):
             result['json']=json.loads(result['body'])
         return result
+
+    def test_monitor_state_excludes_history_and_keeps_alert_inputs(self):
+        normal = self.request('state')['json']
+        compact = self.request('state', headers={'QUERY_STRING': 'view=monitor'})
+        self.assertEqual(compact['status'], 200)
+        self.assertNotIn('recent', compact['json'])
+        self.assertNotIn('segment_run_seconds', compact['json'])
+        for key in ('online', 'pv', 'sv', 'memories', 'completed_memory', 'active_firing', 'mqtt'):
+            self.assertEqual(compact['json'][key], normal[key], key)
 
     def test_full_cycle_snapshot_and_export_import(self):
         saved=self.store.save_profile(sample())

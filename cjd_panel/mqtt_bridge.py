@@ -193,7 +193,7 @@ class MQTTBridge:
         with self.lock:
             return dict(enabled=True, connected=self.connected, subscribed=self.ready,
                         host=self.config.host, port=self.config.port, topic_prefix=self.config.topic_prefix,
-                        error=self.error, last_published=self.last_published, mode=self.worker.snapshot().get('mode','simulator'),
+                        error=self.error, last_published=self.last_published, mode=self.worker.snapshot(compact=True).get('mode','simulator'),
                         history_pending=self.store.mqtt_history_pending())
 
     def start(self):
@@ -248,7 +248,7 @@ class MQTTBridge:
     def _result(self, ident, command, status, code, message):
         self._publish('event', dict(evento='RESULTADO_ORDEN', tipo='ORDEN', timestamp=utcnow(),
             hora=datetime.now().strftime('%H:%M:%S'), command_id=ident, command=command,
-            status=status, code=code, mensaje=message, mode=self.worker.snapshot().get('mode','simulator'),
+            status=status, code=code, mensaje=message, mode=self.worker.snapshot(compact=True).get('mode','simulator'),
             ok=status=='succeeded'), retain=False)
 
     def _on_message(self, client, userdata, message):
@@ -273,7 +273,7 @@ class MQTTBridge:
                 if isinstance(candidate, dict) and isinstance(candidate.get('command_id'), str) and len(candidate['command_id']) <= 128:
                     ident = candidate['command_id']
             operation, payload, ident, deadline = decode_command(suffix, message.payload, message.retain)
-            if not self.ready or not self.worker.snapshot()['online']:
+            if not self.ready or not self.worker.snapshot(compact=True)['online']:
                 raise ValueError('modbus_offline: el programador no está sincronizado.')
             if ident is not None and not self.journal.claim(ident):
                 self._result(ident, command, 'duplicate', 'duplicate_command', 'Orden ya recibida; no se repite.')
@@ -321,21 +321,21 @@ class MQTTBridge:
     def publish_state(self):
         if not self.connected or not self.ready:
             return
-        s = self.worker.snapshot()
+        s = self.worker.snapshot(compact=True)
         online = s['online']
         state = s.get('state') if online else None
         self._publish('modbus/availability', 'online' if online else 'offline', retain=True)
         self._publish('status', dict(mqtt='online', modbus='online' if online else 'offline',
-                                    mode=self.worker.snapshot().get('mode','simulator'), version=__version__), retain=True)
+                                    mode=s.get('mode','simulator'), version=__version__), retain=True)
         for action, allowed in [('run',{0}), ('pause',{1}), ('resume',{2}), ('stop',{1,2})]:
             self._publish('controls/'+action+'/availability', 'online' if state in allowed else 'offline', retain=True)
         if not online:
             return
         self._publish('state', dict(timestamp=s['timestamp'], pv=s['pv'], sv=s['sv'],
             segmento=s['step'], estado=state, estado_texto=['PARADO','FUNCIONANDO','PAUSADO'][state],
-            tiempo_cjd=s['minutes'], memoria=s['memory'], mode=self.worker.snapshot().get('mode','simulator'), version=__version__), qos=0)
-        self._publish('config', dict(curva=s['memory'], spc=s['memory'], cyc=s['cyc'], dp=s['dp'], mode=self.worker.snapshot().get('mode','simulator'), version=__version__), retain=True)
-        memories = dict(version=__version__, memoria_activa=s['memory'], mode=self.worker.snapshot().get('mode','simulator'),
+            tiempo_cjd=s['minutes'], memoria=s['memory'], mode=s.get('mode','simulator'), version=__version__), qos=0)
+        self._publish('config', dict(curva=s['memory'], spc=s['memory'], cyc=s['cyc'], dp=s['dp'], mode=s.get('mode','simulator'), version=__version__), retain=True)
+        memories = dict(version=__version__, memoria_activa=s['memory'], mode=s.get('mode','simulator'),
             memorias={str(i):[dict(segmento=n+1, temperatura=p['temperature'], tiempo=p['minutes'])
                 for n,p in enumerate(points)] for i,points in s['memories'].items()})
         signature = json.dumps(memories, sort_keys=True)
@@ -347,7 +347,7 @@ class MQTTBridge:
     def _discovery(self):
         cfg = self.config
         device = dict(identifiers=[cfg.device_id], name='CJD Control Panel',
-                      manufacturer='CJD Control Panel', model='CJD-9000P · '+self.worker.snapshot().get('mode','simulator'), sw_version=__version__)
+                      manufacturer='CJD Control Panel', model='CJD-9000P · '+self.worker.snapshot(compact=True).get('mode','simulator'), sw_version=__version__)
         availability = [dict(topic=cfg.topic_prefix+'/mqtt/availability'),
                         dict(topic=cfg.topic_prefix+'/modbus/availability')]
         def send(component, key, data):
@@ -405,7 +405,7 @@ class MQTTBridge:
         while not self.stop_event.is_set():
             try:
                 self._drain_results()
-                mode = self.worker.snapshot().get('mode','simulator')
+                mode = self.worker.snapshot(compact=True).get('mode','simulator')
                 if self.connected and self.ready and mode != self.last_mode:
                     self._discovery()
                     self.last_mode = mode
@@ -416,7 +416,7 @@ class MQTTBridge:
                     for event in sorted((e for e in events if e['id'] > self.event_cursor), key=lambda e:e['id']):
                         self._publish('event', dict(evento=event['kind'], tipo='EVENTO', mensaje=event['message'],
                             timestamp=event['timestamp'], origen=event['origin'], coccion_id=event['firing_id'],
-                            mode=self.worker.snapshot().get('mode','simulator')))
+                            mode=mode))
                         self.event_cursor = event['id']
             except Exception:
                 with self.lock:
